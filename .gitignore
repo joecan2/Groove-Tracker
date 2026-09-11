@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Vendored hardware driver (manually copied per docs/SETUP.md, not tracked)
+groove_tracker/waveshare_epd/
+
+# Mock-mode output
+mock_output/
+
+# OS cruft
+.DS_Store

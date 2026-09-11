@@ -1,0 +1,82 @@
+# Groove Tracker
+
+Identifies whatever's playing on the turntable and shows it on a small
+e-paper display — preferring the release you actually own in your
+[DVinyl](https://github.com/Kyonew/DVinyl) collection (e.g. a *Greatest
+Hits* comp) over whatever original studio album the recognition API
+guesses.
+
+Hardware: Raspberry Pi Zero WH + Waveshare 4.2" e-Paper Module + a line-out
+tap on the turntable's signal to a powered speakers setup. Full wiring and
+OS setup: [`docs/SETUP.md`](docs/SETUP.md).
+
+## How it works
+
+```
+turntable line-out (tapped)
+        │
+        ▼
+  audio_capture.py  ──►  identify.py (AudD)  ──►  collection_match.py (DVinyl / MongoDB)
+                                                          │
+                                                          ▼
+                                                    display.py (e-paper)
+```
+
+`main.py` loops: record a short clip, ask AudD what it is, check whether
+you own a release with that track, then render the result — preferring
+your own release's title/format when there's a match.
+
+## Project layout
+
+```
+groove_tracker/
+├── config.py            # settings, loaded from .env
+├── audio_capture.py      # records from the line-in tap
+├── identify.py            # AudD API wrapper
+├── collection_match.py   # matches recognized tracks against your DVinyl collection
+├── display.py             # renders to the Waveshare e-paper panel
+├── main.py                 # the loop tying it all together
+└── waveshare_epd/         # vendored driver lib (not in git — see docs/SETUP.md)
+tests/                       # pytest suite, runs without real hardware
+docs/SETUP.md               # wiring diagrams + full install walkthrough
+systemd/groove-tracker.service
+```
+
+## Setup
+
+See [`docs/SETUP.md`](docs/SETUP.md) for the full hardware + OS walkthrough.
+Quick version once you're on the Pi with the venv active:
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # then fill in AUDD_API_TOKEN and MONGO_URI
+python3 -m groove_tracker
+```
+
+## Mock mode
+
+Most of this project needs real hardware (a turntable, the e-paper panel)
+or paid API calls to actually run. Set `MOCK_MODE=true` in `.env` (or the
+environment) and:
+
+- `audio_capture.record_clip()` returns a bundled silent fixture clip instead of recording
+- `identify.identify_song()` returns a fixed fake result (Queen — Bohemian Rhapsody) instead of calling AudD
+- `collection_match` uses an in-memory fake collection instead of connecting to MongoDB
+- `display.render_now_playing()` writes a PNG to `mock_output/` instead of talking to the e-paper panel
+
+This lets the whole pipeline run end-to-end on any machine — useful for
+development and for the test suite.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+## Hardware notes / gotchas
+
+- This Pi (ARMv6, Zero WH) only supports **32-bit** Raspberry Pi OS.
+- Debian trixie removed `libatlas-base-dev` — use `libopenblas-dev` instead (see docs/SETUP.md).
+- The `waveshare_epd` driver library isn't on PyPI; it's vendored manually and gitignored.
+- DVinyl's MongoDB field names may differ by instance/version — verify with `db.items.findOne({collectionType: "music"})` before trusting the defaults in `.env.example`.

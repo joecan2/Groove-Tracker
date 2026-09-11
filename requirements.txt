@@ -1,0 +1,12 @@
+sounddevice
+soundfile
+requests
+pymongo
+Pillow
+python-dotenv
+RPi.GPIO
+spidev
+
+# Note: the Waveshare e-paper driver (waveshare_epd) is NOT installed via pip.
+# See docs/SETUP.md — clone the official Waveshare e-Paper repo and copy
+# the waveshare_epd library folder into this project directory.

@@ -1,0 +1,16 @@
+[Unit]
+Description=Groove Tracker — vinyl now-playing display
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/groove-tracker
+ExecStart=/home/pi/groove-tracker/venv/bin/python3 -m groove_tracker
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/home/pi/groove-tracker/.env
+
+[Install]
+WantedBy=multi-user.target
