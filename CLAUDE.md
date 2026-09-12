@@ -20,17 +20,23 @@ exists specifically to prefer what the user actually owns over AudD's guess.
 
 ```
 audio_capture.record_clip()          -> WAV file path
-identify.identify_song(wav_path)     -> {artist, title, album} | None
+audio_capture.is_signal_present()    -> bool (RMS level vs SILENCE_THRESHOLD)
+home_assistant.set_playing_state()   -> reports bool to binary_sensor.groove_tracker_playing via HA REST API
+identify.identify_song(wav_path)     -> {artist, title, album} | None   (skipped entirely if not playing)
 collection_match.find_owned_release(artist, title) -> DVinyl item dict | None
 display.render_now_playing(artist, title, album, owned: bool)
 main.process_once() / main.main_loop()  -> ties the above together, dedupes by (artist, title)
 ```
+
+"Is playing" is derived from actual audio signal level, not from AudD recognition success — recognition can fail for reasons unrelated to whether music is playing (network hiccup, API quota, background noise), and silence detection also lets us skip the AudD call entirely when idle.
 
 Each module's hardware/network dependency is isolated behind a `MOCK_MODE`
 check (see config.py) so the pipeline is testable without the real Pi,
 turntable, or DVinyl connection. **When modifying these modules, preserve
 the mock branch** — it's what makes this project runnable and testable in
 a normal dev sandbox (including this one).
+
+**Testability pattern:** hardware-touching public functions (`get_audio_level`, `find_owned_release`, etc.) branch on `config.MOCK_MODE`, which is fixed at first import of the config module — this makes them unsuitable for testing with per-test environment variable overrides, since Python caches the module. Where the underlying logic is worth testing directly, it's split into a `_`-prefixed pure function with no MOCK_MODE dependency (`_compute_rms_level`, `_find_best_candidate`) that tests call directly. Follow this pattern for new hardware-touching features.
 
 ## Environment
 
@@ -85,11 +91,16 @@ configured field names.
 
 ## Testing conventions
 
+- `tests/test_audio_capture.py` — pure RMS-level computation (no I/O beyond reading a local WAV fixture, no MOCK_MODE dependency)
 - `tests/test_collection_match.py` — pure-Python matching logic (no I/O)
 - `tests/test_main_mock_pipeline.py` — full pipeline in MOCK_MODE, no real hardware/network
 - When adding features, prefer keeping new logic in pure functions that can
   be unit tested the same way, rather than deep inside hardware-touching
   code paths.
+
+## Home Assistant integration
+
+`home_assistant.py` reports play/pause state to a Home Assistant instance via a directly-set `binary_sensor.groove_tracker_playing` entity (not backed by a real integration — this is the standard lightweight pattern for external devices, see the module's docstring). The actual light control lives in a Home Assistant automation (`automation.groove_tracker_now_playing_light`, created via the HA MCP tools, not in this repo) watching that entity and controlling `light.now_playing_light` with a 30s debounce on the off-transition. If asked to modify the light-control behavior, that means editing the HA automation, not this codebase — this repo only owns reporting the playing state.
 
 ## Known open items
 

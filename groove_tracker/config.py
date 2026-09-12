@@ -73,3 +73,18 @@ POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "25"))
 
 # In mock mode, rendered images are written here instead of to real hardware.
 MOCK_DISPLAY_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "mock_output")
+
+# --- Silence detection ---
+# RMS amplitude (roughly 0-1) above which a clip counts as "something is
+# playing" rather than silence between records. Tune if you get false
+# on/off flips — lower it if quiet passages get marked as silent, raise it
+# if turntable motor hum alone triggers "playing".
+SILENCE_THRESHOLD = float(os.getenv("SILENCE_THRESHOLD", "0.02"))
+
+# --- Home Assistant ---
+# Optional — leave HA_URL/HA_TOKEN blank to disable this feature entirely.
+# HA_TOKEN is a Long-Lived Access Token: create one in Home Assistant under
+# your Profile page (scroll to "Long-lived access tokens" -> Create Token).
+HA_URL = os.getenv("HA_URL", "")
+HA_TOKEN = os.getenv("HA_TOKEN", "")
+HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID", "binary_sensor.groove_tracker_playing")

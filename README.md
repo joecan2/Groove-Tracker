@@ -80,3 +80,13 @@ pytest
 - Debian trixie removed `libatlas-base-dev` — use `libopenblas-dev` instead (see docs/SETUP.md).
 - The `waveshare_epd` driver library isn't on PyPI; it's vendored manually and gitignored.
 - DVinyl's MongoDB field names may differ by instance/version — verify with `db.items.findOne({collectionType: "music"})` before trusting the defaults in `.env.example`.
+
+## Home Assistant integration
+
+Reports whether the turntable is actively playing to Home Assistant, so an automation can turn a nearby light on/off with the music. Based on actual audio signal level (not recognition success) — this also means AudD calls are skipped entirely during silence, saving API quota.
+
+- `audio_capture.is_signal_present()` checks RMS level against `SILENCE_THRESHOLD`
+- `home_assistant.set_playing_state()` POSTs to `binary_sensor.groove_tracker_playing` via the HA REST API every poll cycle
+- A Home Assistant automation (`automation.groove_tracker_now_playing_light`) watches that entity and controls `light.now_playing_light`, with a 30-second debounce on the "stopped" transition to avoid flicker between tracks
+
+Set `HA_URL` and `HA_TOKEN` in `.env` to enable — leave both blank to disable this feature entirely (the rest of the project works fine without it).

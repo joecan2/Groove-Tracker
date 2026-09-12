@@ -151,7 +151,18 @@ python3 -c "from groove_tracker.collection_match import find_owned_release; prin
 python3 -c "from groove_tracker import display; display.render_now_playing('Test Artist', 'Test Title', 'Test Album')"
 ```
 
-## 10. Run it for real
+## 10. Optional: Home Assistant "Now Playing" light
+
+If you want a nearby light to turn on/off with the music:
+
+1. In Home Assistant, go to your Profile page and scroll to "Long-lived access tokens" → Create Token. Copy it.
+2. In `.env`, set `HA_URL` (e.g. `http://192.168.1.50:8123`) and `HA_TOKEN` to that token.
+3. Test it reports correctly: `python3 -c "from groove_tracker.home_assistant import set_playing_state; set_playing_state(True)"` — you should see `binary_sensor.groove_tracker_playing` appear as "on" in Home Assistant (Developer Tools → States).
+4. The automation that watches this entity and controls the light was set up separately in Home Assistant (`automation.groove_tracker_now_playing_light`) — it's not part of this repo. If you need to recreate it, it triggers on that binary_sensor's state changing to "on"/"off" (with a 30s debounce on "off" to avoid flicker between tracks) and calls `light.turn_on`/`light.turn_off` on your target light/switch.
+
+This step is entirely optional — leave `HA_URL`/`HA_TOKEN` blank in `.env` and the rest of the project works normally without it.
+
+## 11. Run it for real
 
 ```bash
 python3 -m groove_tracker

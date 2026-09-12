@@ -1,14 +1,15 @@
 """
-Main loop: record audio -> identify song -> check your DVinyl collection ->
-render to the e-paper display.
+Main loop: record audio -> check for silence -> identify song -> check your
+DVinyl collection -> render to the e-paper display -> report playing state
+to Home Assistant.
 
 Run with:      python -m groove_tracker
 Or for a single one-shot pass (handy for testing): main_loop(once=True)
 """
 import time
 
-from . import config, display
-from .audio_capture import record_clip
+from . import config, display, home_assistant
+from .audio_capture import is_signal_present, record_clip
 from .collection_match import find_owned_release, refresh_cache
 from .identify import identify_song
 
@@ -20,6 +21,19 @@ def process_once(last_shown=None):
     unchanged if nothing new was recognized.
     """
     wav_path = record_clip()
+    playing = is_signal_present(wav_path)
+
+    try:
+        home_assistant.set_playing_state(playing)
+    except Exception as e:
+        # A Home Assistant hiccup shouldn't block recognition/display.
+        print(f"Error reporting to Home Assistant: {e}")
+
+    if not playing:
+        # Nothing's spinning — skip the AudD call entirely rather than
+        # burning API quota on silence.
+        return last_shown
+
     song = identify_song(wav_path)
 
     if not song:
