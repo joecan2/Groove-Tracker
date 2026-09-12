@@ -115,15 +115,21 @@ new credentials.
 
 ## 8. Verify your DVinyl schema
 
-Field names can vary slightly by version / how items were imported. Confirm
-yours:
+Confirmed against a real instance: the collection is `albums` (not
+`items`), and there's no `collectionType` field — entry type is `kind`
+(e.g. `"Music"`), and the format field is `media_type` (e.g. `"cassette"`,
+`"Vinyl"`). These are already the defaults in `.env.example`. Still worth
+double-checking against your own database, since field names can vary by
+version or how entries were imported:
 
 ```javascript
-db.items.findOne({collectionType: "music"})
+db.albums.findOne()
 ```
 
-Adjust `FIELD_ARTIST`, `FIELD_TITLE`, `FIELD_FORMAT`, and `FIELD_TRACKLIST`
-in `.env` to match what you see.
+If your instance differs, adjust `MONGO_COLLECTION_NAME`,
+`MONGO_FILTER_FIELD`/`MONGO_FILTER_VALUE`, and the `FIELD_*` variables in
+`.env` to match. Set `MONGO_FILTER_FIELD=` (empty) to skip filtering
+entirely and query every document if your instance doesn't use `kind`.
 
 ## 9. Test before running the full loop
 

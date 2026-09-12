@@ -15,18 +15,21 @@ _client = None
 _music_items_cache = None
 
 # A couple of fake owned releases, used in MOCK_MODE so the matching logic
-# can be exercised without a real DVinyl/MongoDB connection.
+# can be exercised without a real DVinyl/MongoDB connection. Field names
+# match a real DVinyl instance's schema (see config.py comments).
 MOCK_COLLECTION = [
     {
+        "kind": "Music",
         "artist": "Queen",
         "title": "Greatest Hits",
-        "format": "Vinyl",
+        "media_type": "Vinyl",
         "tracklist": [{"title": "Bohemian Rhapsody"}, {"title": "Killer Queen"}],
     },
     {
+        "kind": "Music",
         "artist": "Queen",
         "title": "A Night at the Opera",
-        "format": "CD",
+        "media_type": "CD",
         "tracklist": [{"title": "Bohemian Rhapsody"}, {"title": "Love of My Life"}],
     },
 ]
@@ -48,7 +51,10 @@ def _get_music_items():
     db = _client[config.MONGO_DB_NAME]
     coll = db[config.MONGO_COLLECTION_NAME]
 
-    items = list(coll.find({"collectionType": config.MUSIC_COLLECTION_TYPE}))
+    query = {}
+    if config.MONGO_FILTER_FIELD:
+        query[config.MONGO_FILTER_FIELD] = config.MONGO_FILTER_VALUE
+    items = list(coll.find(query))
     _music_items_cache = items
     return items
 

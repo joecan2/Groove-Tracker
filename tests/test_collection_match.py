@@ -30,7 +30,7 @@ def test_find_best_candidate_prefers_vinyl_over_other_formats():
     match = _find_best_candidate(MOCK_COLLECTION, "Queen", "Bohemian Rhapsody")
     assert match is not None
     assert match["title"] == "Greatest Hits"
-    assert match["format"] == "Vinyl"
+    assert match["media_type"] == "Vinyl"
 
 
 def test_find_best_candidate_no_match_returns_none():

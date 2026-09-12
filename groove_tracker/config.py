@@ -45,18 +45,26 @@ MOCK_AUDIO_FIXTURE = os.path.join(
 # --- DVinyl / MongoDB ---
 # Use a dedicated read-only user, not your admin credentials — see
 # docs/SETUP.md for how to create one.
+#
+# Confirmed against a real DVinyl instance via:
+#   db.albums.findOne()
+# DVinyl has no separate "items" collection or "collectionType" field —
+# everything lives in "albums", and the entry type is the "kind" field
+# (e.g. "Music"). MONGO_FILTER_FIELD/VALUE control that filter; set
+# MONGO_FILTER_FIELD to an empty string to skip filtering entirely (query
+# every document) if your instance doesn't use "kind" the same way.
 MONGO_URI = os.getenv("MONGO_URI", "")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "dvinyl")
-MONGO_COLLECTION_NAME = os.getenv("MONGO_COLLECTION_NAME", "items")
-MUSIC_COLLECTION_TYPE = os.getenv("MUSIC_COLLECTION_TYPE", "music")
+MONGO_COLLECTION_NAME = os.getenv("MONGO_COLLECTION_NAME", "albums")
+MONGO_FILTER_FIELD = os.getenv("MONGO_FILTER_FIELD", "kind")
+MONGO_FILTER_VALUE = os.getenv("MONGO_FILTER_VALUE", "Music")
 
-# Field names inside a DVinyl music item document.
-# VERIFY these against your own instance:
-#   db.items.findOne({collectionType: "music"})
-# and adjust your .env if your field names differ.
+# Field names inside a DVinyl album document. Confirmed defaults below
+# match a real instance, but field names can still vary — verify yours
+# with `db.albums.findOne()` and adjust .env if needed.
 FIELD_ARTIST = os.getenv("FIELD_ARTIST", "artist")
 FIELD_TITLE = os.getenv("FIELD_TITLE", "title")
-FIELD_FORMAT = os.getenv("FIELD_FORMAT", "format")
+FIELD_FORMAT = os.getenv("FIELD_FORMAT", "media_type")
 FIELD_TRACKLIST = os.getenv("FIELD_TRACKLIST", "tracklist")
 
 # --- Display ---

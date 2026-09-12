@@ -70,13 +70,18 @@ expected outside the real Pi.
 ## DVinyl integration specifics
 
 DVinyl doesn't expose a documented public read API, so `collection_match.py`
-connects directly to its MongoDB database with a read-only user. Field
-names (`FIELD_ARTIST`, `FIELD_TITLE`, `FIELD_FORMAT`, `FIELD_TRACKLIST` in
-config.py / .env) are configurable because they may not match the defaults
-for every DVinyl instance — the user needs to confirm theirs with
-`db.items.findOne({collectionType: "music"})` on their actual database.
-Don't hardcode assumptions about this schema elsewhere in the code; go
-through the configured field names.
+connects directly to its MongoDB database with a read-only user.
+
+Schema confirmed against a real instance (via `db.albums.findOne()`):
+collection name is `albums` (not `items`), there's no `collectionType`
+field — entry type is `kind` (e.g. `"Music"`) — and the format field is
+`media_type` (e.g. `"cassette"`, `"Vinyl"`), not `format`. These are now
+the defaults in config.py / .env.example. Field names are still
+configurable (`FIELD_ARTIST`, `FIELD_TITLE`, `FIELD_FORMAT`,
+`FIELD_TRACKLIST`, `MONGO_COLLECTION_NAME`, `MONGO_FILTER_FIELD`,
+`MONGO_FILTER_VALUE`) since other DVinyl instances may still differ —
+don't hardcode schema assumptions elsewhere in the code; go through the
+configured field names.
 
 ## Testing conventions
 
