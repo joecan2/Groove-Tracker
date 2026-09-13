@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/groove-tracker
-ExecStart=/home/pi/groove-tracker/venv/bin/python3 -m groove_tracker
+User=joe
+WorkingDirectory=/home/joe/groove-tracker
+ExecStart=/home/joe/groove-tracker/venv/bin/python3 -m groove_tracker
 Restart=on-failure
 RestartSec=10
-EnvironmentFile=/home/pi/groove-tracker/.env
+EnvironmentFile=/home/joe/groove-tracker/.env
 
 [Install]
 WantedBy=multi-user.target

@@ -52,7 +52,7 @@ that the `ssh` enable file actually got written to the boot partition
 ## 3. First boot
 
 ```bash
-ssh pi@<hostname>.local
+ssh joe@<hostname>.local
 sudo raspi-config
 # Interface Options -> SPI -> Enable
 sudo apt update
