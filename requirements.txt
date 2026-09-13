@@ -7,6 +7,14 @@ python-dotenv
 RPi.GPIO
 spidev
 
+# Newer versions of Waveshare's e-Paper driver use gpiozero (with lgpio as
+# its backend on current Raspberry Pi OS) for GPIO access rather than only
+# RPi.GPIO -- both are needed depending on which epdconfig.py path your
+# cloned driver takes.
+gpiozero
+lgpio
+
 # Note: the Waveshare e-paper driver (waveshare_epd) is NOT installed via pip.
 # See docs/SETUP.md — clone the official Waveshare e-Paper repo and copy
-# the waveshare_epd library folder into this project directory.
+# the waveshare_epd library folder into the project ROOT (not into
+# groove_tracker/).
