@@ -67,13 +67,15 @@ the same BLAS library numpy needs.
 ## 4. Get the Waveshare display library
 
 The `waveshare_epd` library is not on PyPI — clone it directly and copy it
-into the package folder (it's gitignored, so this step is needed on every
-fresh clone/deploy):
+to the project root (sibling to the `groove_tracker/` package folder, NOT
+inside it — `display.py` imports it as a bare top-level module, so it
+needs to be directly on the Python path, which only the project root is
+when running `python3 -m groove_tracker` from there):
 
 ```bash
 cd ~
 git clone https://github.com/waveshare/e-Paper.git
-cp -r e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd ~/groove-tracker/groove_tracker/
+cp -r e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd ~/groove-tracker/
 ```
 
 ## 5. Set up the project

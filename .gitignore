@@ -10,7 +10,9 @@ venv/
 .pytest_cache/
 
 # Vendored hardware driver (manually copied per docs/SETUP.md, not tracked)
-groove_tracker/waveshare_epd/
+# Must live at the project root (sibling to groove_tracker/), not nested
+# inside the package — it's imported as a bare top-level module.
+/waveshare_epd/
 
 # Mock-mode output
 mock_output/

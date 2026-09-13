@@ -35,8 +35,8 @@ groove_tracker/
 ├── identify.py            # AudD API wrapper
 ├── collection_match.py   # matches recognized tracks against your DVinyl collection
 ├── display.py             # renders to the Waveshare e-paper panel
-├── main.py                 # the loop tying it all together
-└── waveshare_epd/         # vendored driver lib (not in git — see docs/SETUP.md)
+└── main.py                 # the loop tying it all together
+waveshare_epd/               # vendored driver lib, project root (not in git — see docs/SETUP.md)
 tests/                       # pytest suite, runs without real hardware
 docs/SETUP.md               # wiring diagrams + full install walkthrough
 systemd/groove-tracker.service

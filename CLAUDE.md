@@ -49,10 +49,11 @@ a normal dev sandbox (including this one).
   trixie-based) — the numpy BLAS dependency is `libopenblas-dev` now. See
   docs/SETUP.md.
 - The `waveshare_epd` driver library is vendored manually (not pip-
-  installable) into `groove_tracker/waveshare_epd/` and is gitignored — it
-  won't be present in this repo or in this sandbox. `display.py` only
-  imports it inside the non-mock code path, so this is fine as long as
-  that stays true.
+  installable) at the project root — `waveshare_epd/`, a sibling of
+  `groove_tracker/`, NOT nested inside it — and is gitignored. It must be
+  at the root because `display.py` imports it as a bare top-level module
+  (`import waveshare_epd.X`), which only resolves if the project root
+  (not the package directory) is on the Python path.
 - Real secrets (AudD token, Mongo URI) live in `.env`, gitignored. Use
   `.env.example` as the source of truth for what variables exist —keep it
   updated if you add new config.
