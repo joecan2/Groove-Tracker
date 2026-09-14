@@ -32,7 +32,7 @@ fi
 echo "--- Step 1/5: System packages ---"
 sudo apt update
 sudo apt install -y python3-pip python3-venv git \
-    libopenjp2-7 libopenblas-dev portaudio19-dev
+    libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1
 echo
 
 echo "--- Step 2/5: Enabling SPI ---"

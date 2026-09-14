@@ -97,7 +97,7 @@ won't overwrite an existing `.env`.
 ```bash
 sudo apt update
 sudo apt install -y python3-pip python3-venv git \
-    libopenjp2-7 libopenblas-dev portaudio19-dev
+    libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1
 
 sudo raspi-config nonint do_spi 0
 
