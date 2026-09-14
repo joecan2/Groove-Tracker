@@ -45,11 +45,13 @@ systemd/groove-tracker.service
 ## Setup
 
 See [`docs/SETUP.md`](docs/SETUP.md) for the full hardware + OS walkthrough.
-Quick version once you're on the Pi with the venv active:
+Quick version once the project is copied to the Pi:
 
 ```bash
-pip install -r requirements.txt
-cp .env.example .env   # then fill in AUDD_API_TOKEN and MONGO_URI
+bash install.sh          # system packages, SPI, Waveshare driver, venv, pip installs
+source venv/bin/activate
+cp .env.example .env     # skipped by install.sh if .env already exists
+nano .env                # fill in AUDD_API_TOKEN, MONGO_URI, etc.
 python3 -m groove_tracker
 ```
 

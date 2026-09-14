@@ -34,6 +34,12 @@ one leg continues to your powered speakers as before → the other leg runs
 through the RCA-to-3.5mm cable into the USB audio adapter → USB audio
 adapter plugs into the Pi's micro-USB port via the OTG cable.
 
+If your USB audio adapter's line-in is tuned for microphone-level signals
+rather than line-level, a real turntable signal can overload/clip it —
+if levels come back near the max (close to 1.0) during testing in step 9,
+lower the capture gain with `alsamixer` before assuming something's wired
+wrong.
+
 ## 2. Flash the OS
 
 Use Raspberry Pi Imager. This board only supports **32-bit** Raspberry Pi
@@ -55,34 +61,50 @@ that the `ssh` enable file actually got written to the boot partition
 ssh joe@<hostname>.local
 sudo raspi-config
 # Interface Options -> SPI -> Enable
+```
+
+(The install script in the next step also does this automatically — the
+manual command above is here in case you want to confirm it separately.)
+
+## 4. Copy the project to the Pi
+
+From your computer:
+
+```bash
+scp -r ./groove-tracker joe@<hostname>.local:~/
+```
+
+Or, once Samba is set up (see the main README/your own notes on that), you
+can just drag files over directly.
+
+## 5. Run the install script
+
+```bash
+cd ~/groove-tracker
+bash install.sh
+```
+
+This handles: system packages, enabling SPI, cloning the Waveshare e-Paper
+driver into the right place (the project root, not inside `groove_tracker/`
+— see the comment in `.gitignore` if you're curious why that distinction
+matters), creating the virtual environment, and installing Python
+dependencies. It's safe to re-run — it skips anything already done and
+won't overwrite an existing `.env`.
+
+<details>
+<summary>What it does, if you'd rather run each piece by hand</summary>
+
+```bash
 sudo apt update
 sudo apt install -y python3-pip python3-venv git \
     libopenjp2-7 libopenblas-dev portaudio19-dev
-```
 
-Note: `libopenblas-dev` replaces the older `libatlas-base-dev`, which
-Debian trixie (the current Raspberry Pi OS base) has removed. It provides
-the same BLAS library numpy needs.
+sudo raspi-config nonint do_spi 0
 
-## 4. Get the Waveshare display library
-
-The `waveshare_epd` library is not on PyPI — clone it directly and copy it
-to the project root (sibling to the `groove_tracker/` package folder, NOT
-inside it — `display.py` imports it as a bare top-level module, so it
-needs to be directly on the Python path, which only the project root is
-when running `python3 -m groove_tracker` from there):
-
-```bash
 cd ~
 git clone https://github.com/waveshare/e-Paper.git
 cp -r e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd ~/groove-tracker/
-```
 
-## 5. Set up the project
-
-Clone/copy this repo to `~/groove-tracker` on the Pi, then:
-
-```bash
 cd ~/groove-tracker
 python3 -m venv venv
 source venv/bin/activate
@@ -90,15 +112,43 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and fill in your real `AUDD_API_TOKEN` and `MONGO_URI` (see
-below). Leave `MOCK_MODE=false` on the real device.
+Note: `libopenblas-dev` replaces the older `libatlas-base-dev`, which
+Debian trixie (the current Raspberry Pi OS base) has removed — it provides
+the same BLAS library numpy needs. The `waveshare_epd` folder must land at
+the project root (sibling to `groove_tracker/`), not nested inside the
+package — `display.py` imports it as a bare top-level module, which only
+resolves from the project root.
 
-## 6. Get an AudD API token
+</details>
+
+After the script finishes, activate the venv for the rest of this guide:
+
+```bash
+source venv/bin/activate
+```
+
+## 6. Fill in .env
+
+`cp .env.example .env` already happened via the script if `.env` didn't
+exist yet. Edit it now:
+
+```bash
+nano .env
+```
+
+Confirm `DISPLAY_MODEL` matches your panel — `epd4in2_V2` is confirmed
+correct for this hardware (check yours by running
+`grep "^from waveshare_epd import" ~/e-Paper/.../examples/epd_4in2_V2_test.py`
+against whichever demo script you used to test the display, if it
+differs). Leave `MOCK_MODE=false` on the real device. The remaining
+sections below walk through the values you still need to fill in.
+
+## 7. Get an AudD API token
 
 Sign up at https://audd.io — the free tier is enough for personal use.
 Paste the token into `.env` as `AUDD_API_TOKEN`.
 
-## 7. Create a read-only MongoDB user for DVinyl
+## 8. Create a read-only MongoDB user for DVinyl
 
 On your Unraid server, open a shell into the MongoDB container and run:
 
@@ -112,10 +162,12 @@ db.createUser({
 ```
 
 Make sure the Mongo container's port (usually 27017) is reachable from the
-Pi's subnet, and update `MONGO_URI` in `.env` with your Unraid IP and the
-new credentials.
+Pi's subnet — this may mean publishing the port in Unraid's Docker UI if
+it isn't already (check with `docker ps`, look for a host-side mapping
+like `0.0.0.0:27017->27017/tcp`) — and update `MONGO_URI` in `.env` with
+your Unraid IP and the new credentials.
 
-## 8. Verify your DVinyl schema
+## 9. Verify your DVinyl schema
 
 Confirmed against a real instance: the collection is `albums` (not
 `items`), and there's no `collectionType` field — entry type is `kind`
@@ -133,27 +185,35 @@ If your instance differs, adjust `MONGO_COLLECTION_NAME`,
 `.env` to match. Set `MONGO_FILTER_FIELD=` (empty) to skip filtering
 entirely and query every document if your instance doesn't use `kind`.
 
-## 9. Test before running the full loop
+## 10. Test before running the full loop
 
 With `MOCK_MODE=true` in `.env`, you can exercise the whole pipeline
 without any hardware or network dependencies — see the "Mock mode" section
-in the main README. Once that passes, switch to real hardware:
+in the main README. Once that passes, switch to real hardware, testing one
+piece at a time:
 
 ```bash
-# Test audio capture (records 12s — play it back to confirm you hear the record)
-python3 -c "from groove_tracker.audio_capture import record_clip; print(record_clip())"
+# Test audio capture (records 12s — play a record while this runs)
+CLIP=$(python3 -c "from groove_tracker.audio_capture import record_clip; print(record_clip())")
+echo $CLIP
 
-# Test AudD recognition on that file
-python3 -c "from groove_tracker.identify import identify_song; print(identify_song('/path/to/clip.wav'))"
+# Test silence detection on that same clip
+python3 -c "from groove_tracker.audio_capture import get_audio_level, is_signal_present; print('Level:', get_audio_level('$CLIP')); print('Playing:', is_signal_present('$CLIP'))"
 
-# Test DVinyl matching
+# Test AudD recognition on that same clip
+python3 -c "from groove_tracker.identify import identify_song; print(identify_song('$CLIP'))"
+
+# Test DVinyl matching (independent of audio — use something you know is in your collection)
 python3 -c "from groove_tracker.collection_match import find_owned_release; print(find_owned_release('Queen', 'Bohemian Rhapsody'))"
 
 # Test the display directly
 python3 -c "from groove_tracker import display; display.render_now_playing('Test Artist', 'Test Title', 'Test Album')"
 ```
 
-## 10. Optional: Home Assistant "Now Playing" light
+Keep `$CLIP` and all of the above in the *same* terminal session — shell
+variables don't persist across separate SSH connections.
+
+## 11. Optional: Home Assistant "Now Playing" light
 
 If you want a nearby light to turn on/off with the music:
 
@@ -164,7 +224,7 @@ If you want a nearby light to turn on/off with the music:
 
 This step is entirely optional — leave `HA_URL`/`HA_TOKEN` blank in `.env` and the rest of the project works normally without it.
 
-## 11. Run it for real
+## 12. Run it for real
 
 ```bash
 python3 -m groove_tracker
