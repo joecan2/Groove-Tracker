@@ -48,11 +48,19 @@ echo "--- Step 3/5: Waveshare e-Paper driver ---"
 if [ -d "waveshare_epd" ]; then
     echo "waveshare_epd/ already exists at the project root — skipping."
 else
-    TMP_CLONE="$(mktemp -d)"
-    echo "Cloning Waveshare e-Paper repo (this may take a minute)..."
-    git clone --depth 1 https://github.com/waveshare/e-Paper.git "$TMP_CLONE/e-Paper"
-    cp -r "$TMP_CLONE/e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd" "$PROJECT_ROOT/"
-    rm -rf "$TMP_CLONE"
+    # The full Waveshare e-Paper repo has 33,000+ files covering every
+    # product they sell (STM32, Arduino, Jetson boards, etc.) -- a full
+    # checkout can exhaust inodes or tmpfs space on a small SD card / low-RAM
+    # board. Sparse + partial clone fetches only the one folder we need.
+    # Cloned inside the project dir rather than /tmp, in case /tmp is
+    # RAM-backed on this board.
+    SPARSE_DIR="$PROJECT_ROOT/.waveshare-sparse-clone"
+    rm -rf "$SPARSE_DIR"
+    echo "Cloning just the driver folder (sparse checkout, this may take a minute)..."
+    git clone --filter=blob:none --sparse --depth 1 https://github.com/waveshare/e-Paper.git "$SPARSE_DIR"
+    (cd "$SPARSE_DIR" && git sparse-checkout set RaspberryPi_JetsonNano/python/lib/waveshare_epd)
+    cp -r "$SPARSE_DIR/RaspberryPi_JetsonNano/python/lib/waveshare_epd" "$PROJECT_ROOT/"
+    rm -rf "$SPARSE_DIR"
     echo "Copied waveshare_epd/ to the project root."
 fi
 echo

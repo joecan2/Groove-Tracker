@@ -101,11 +101,12 @@ sudo apt install -y python3-pip python3-venv git \
 
 sudo raspi-config nonint do_spi 0
 
-cd ~
-git clone https://github.com/waveshare/e-Paper.git
-cp -r e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd ~/groove-tracker/
-
 cd ~/groove-tracker
+git clone --filter=blob:none --sparse --depth 1 https://github.com/waveshare/e-Paper.git .waveshare-sparse-clone
+(cd .waveshare-sparse-clone && git sparse-checkout set RaspberryPi_JetsonNano/python/lib/waveshare_epd)
+cp -r .waveshare-sparse-clone/RaspberryPi_JetsonNano/python/lib/waveshare_epd .
+rm -rf .waveshare-sparse-clone
+
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -117,7 +118,13 @@ Debian trixie (the current Raspberry Pi OS base) has removed — it provides
 the same BLAS library numpy needs. The `waveshare_epd` folder must land at
 the project root (sibling to `groove_tracker/`), not nested inside the
 package — `display.py` imports it as a bare top-level module, which only
-resolves from the project root.
+resolves from the project root. The sparse/partial clone above fetches
+only that one folder rather than the full repo — Waveshare's e-Paper repo
+has 33,000+ files covering every product they sell, and a full checkout
+can exhaust inodes or fill a RAM-backed `/tmp` on a small SD card / low-RAM
+board like the Zero. If you hit "unable to write file" errors from a full
+`git clone` here, that's what happened — clean up with
+`rm -rf /tmp/tmp.* ~/e-Paper` and use the sparse approach above instead.
 
 </details>
 
