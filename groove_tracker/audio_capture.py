@@ -7,12 +7,22 @@ including one with no audio hardware — without raising ImportError.
 
 Signal-level detection uses only the stdlib `wave` and `array` modules,
 not `audioop` — that module was removed in Python 3.13.
+
+Temp recordings are written under the project directory rather than the
+system /tmp — on at least one real Pi Zero, /tmp turned out to be a small,
+possibly RAM-backed area that filled up from accumulated temp files (see
+main.py's cleanup in process_once, which deletes each clip after use —
+this project-local location is a second line of defense in case that
+cleanup is ever skipped, e.g. by a crash).
 """
 import array
+import os
 import tempfile
 import wave
 
 from . import config
+
+TEMP_AUDIO_DIR = os.path.join(os.path.dirname(__file__), "..", ".tmp_audio")
 
 
 def record_clip():
@@ -28,6 +38,8 @@ def record_clip():
     import sounddevice as sd
     import soundfile as sf
 
+    os.makedirs(TEMP_AUDIO_DIR, exist_ok=True)
+
     frames = int(config.CLIP_SECONDS * config.SAMPLE_RATE)
     audio = sd.rec(
         frames,
@@ -38,7 +50,7 @@ def record_clip():
     )
     sd.wait()
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp = tempfile.NamedTemporaryFile(dir=TEMP_AUDIO_DIR, suffix=".wav", delete=False)
     sf.write(tmp.name, audio, config.SAMPLE_RATE)
     return tmp.name
 

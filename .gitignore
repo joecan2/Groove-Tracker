@@ -17,5 +17,8 @@ venv/
 # Mock-mode output
 mock_output/
 
+# Temp audio recordings (see audio_capture.py TEMP_AUDIO_DIR)
+.tmp_audio/
+
 # OS cruft
 .DS_Store

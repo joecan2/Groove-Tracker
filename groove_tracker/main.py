@@ -6,6 +6,7 @@ to Home Assistant.
 Run with:      python -m groove_tracker
 Or for a single one-shot pass (handy for testing): main_loop(once=True)
 """
+import os
 import time
 
 from . import config, display, home_assistant
@@ -22,43 +23,53 @@ def process_once(last_shown=None):
     """
     print("Recording clip...", flush=True)
     wav_path = record_clip()
-    playing = is_signal_present(wav_path)
-    print(f"Signal level check: {'playing' if playing else 'silent'}", flush=True)
-
     try:
-        home_assistant.set_playing_state(playing)
-    except Exception as e:
-        # A Home Assistant hiccup shouldn't block recognition/display.
-        print(f"Error reporting to Home Assistant: {e}", flush=True)
+        playing = is_signal_present(wav_path)
+        print(f"Signal level check: {'playing' if playing else 'silent'}", flush=True)
 
-    if not playing:
-        return last_shown
+        try:
+            home_assistant.set_playing_state(playing)
+        except Exception as e:
+            # A Home Assistant hiccup shouldn't block recognition/display.
+            print(f"Error reporting to Home Assistant: {e}", flush=True)
 
-    print("Identifying song via AudD...", flush=True)
-    song = identify_song(wav_path)
+        if not playing:
+            return last_shown
 
-    if not song:
-        print("No song recognized this pass.", flush=True)
-        return last_shown
+        print("Identifying song via AudD...", flush=True)
+        song = identify_song(wav_path)
 
-    key = (song["artist"], song["title"])
-    print(f"Recognized: {song['artist']} — {song['title']}", flush=True)
-    if key == last_shown:
-        print("Same as last shown, not re-rendering.", flush=True)
-        return last_shown
+        if not song:
+            print("No song recognized this pass.", flush=True)
+            return last_shown
 
-    print("Checking DVinyl collection...", flush=True)
-    owned_release = find_owned_release(song["artist"], song["title"])
-    if owned_release:
-        album = owned_release.get(config.FIELD_TITLE, song["album"])
-        print(f"Owned release found: {album} — rendering to display...", flush=True)
-        display.render_now_playing(song["artist"], song["title"], album, owned=True)
-    else:
-        print(f"Not in collection, using AudD's album: {song['album']} — rendering to display...", flush=True)
-        display.render_now_playing(song["artist"], song["title"], song["album"], owned=False)
+        key = (song["artist"], song["title"])
+        print(f"Recognized: {song['artist']} — {song['title']}", flush=True)
+        if key == last_shown:
+            print("Same as last shown, not re-rendering.", flush=True)
+            return last_shown
 
-    print("Display updated.", flush=True)
-    return key
+        print("Checking DVinyl collection...", flush=True)
+        owned_release = find_owned_release(song["artist"], song["title"])
+        if owned_release:
+            album = owned_release.get(config.FIELD_TITLE, song["album"])
+            print(f"Owned release found: {album} — rendering to display...", flush=True)
+            display.render_now_playing(song["artist"], song["title"], album, owned=True)
+        else:
+            print(f"Not in collection, using AudD's album: {song['album']} — rendering to display...", flush=True)
+            display.render_now_playing(song["artist"], song["title"], song["album"], owned=False)
+
+        print("Display updated.", flush=True)
+        return key
+    finally:
+        # Always clean up the recorded clip, even if something above raised
+        # -- this was previously leaking a ~1MB file every poll cycle
+        # (found after ~500 accumulated and filled a size-limited /tmp).
+        if not config.MOCK_MODE:
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
 
 
 def main_loop(once=False):
