@@ -48,6 +48,13 @@ a normal dev sandbox (including this one).
 - `libatlas-base-dev` doesn't exist anymore on the Pi's OS (Debian
   trixie-based) — the numpy BLAS dependency is `libopenblas-dev` now. See
   docs/SETUP.md.
+- Pillow's text rendering (used in `display.py` to draw the artist/title/
+  album text) needs the system `libfreetype6` library — without it,
+  `render_now_playing()` raises `libfreetype.so.6: cannot open shared
+  object file` on every call, which the broad `except Exception` in
+  `main.main_loop()` swallows and logs, so the visible symptom is a
+  service that runs and recognizes songs fine but never actually updates
+  the display. Installed by `install.sh`.
 - The `waveshare_epd` driver library is vendored manually (not pip-
   installable) at the project root — `waveshare_epd/`, a sibling of
   `groove_tracker/`, NOT nested inside it — and is gitignored. It must be
