@@ -36,9 +36,21 @@ adapter plugs into the Pi's micro-USB port via the OTG cable.
 
 If your USB audio adapter's line-in is tuned for microphone-level signals
 rather than line-level, a real turntable signal can overload/clip it —
-if levels come back near the max (close to 1.0) during testing in step 9,
+if levels come back near the max (close to 1.0) during testing in step 10,
 lower the capture gain with `alsamixer` before assuming something's wired
-wrong.
+wrong. Cheap mic-level adapters can also apply voice-oriented processing
+(auto gain, noise gating) that degrades recognition even when the level
+*looks* fine — if recognition fails consistently on tracks you know AudD
+can identify, try a true line-level interface (e.g. a Behringer UCA202)
+instead of chasing the gain knob further.
+
+Some line-level interfaces (the UCA202 included) have **no adjustable
+capture gain at all** — `alsamixer` will show "This sound device does not
+have any capture controls." for them. If your recordings come back clean
+but consistently quiet (see step 10's level check and `CAPTURE_GAIN` in
+`.env.example`), that's expected and normal for this class of device —
+compensate with `CAPTURE_GAIN` instead of looking for a hardware knob that
+doesn't exist.
 
 ## 2. Flash the OS
 
@@ -219,6 +231,16 @@ python3 -c "from groove_tracker import display; display.render_now_playing('Test
 
 Keep `$CLIP` and all of the above in the *same* terminal session — shell
 variables don't persist across separate SSH connections.
+
+**If `get_audio_level` comes back low (well under ~0.15-0.2) even during a
+loud passage, and `alsamixer` shows no capture controls for your device**,
+raise `CAPTURE_GAIN` in `.env` (try 4-6 as a starting point), re-run the
+capture + level check above, and confirm the new level lands around
+0.2-0.3 without clipping (watch for the level pinning near 1.0, which
+means the gain is too high). This is expected/normal for fixed line-level
+interfaces like the Behringer UCA202 — they have no hardware gain to
+adjust, so this software-side boost is the intended fix, not a
+workaround.
 
 ## 11. Optional: Home Assistant "Now Playing" light
 

@@ -74,6 +74,28 @@ import, a real MongoDB connection) cannot be exercised here — don't try to
 "fix" failures caused by missing hardware/libraries in those paths; that's
 expected outside the real Pi.
 
+## Audio gain
+
+Some USB audio interfaces used for the line-out tap have no hardware
+capture-gain control at all (confirmed on a Behringer UCA202 via
+`alsamixer`: "This sound device does not have any capture controls."). A
+clean but quiet signal (low RMS, e.g. ~0.05) is harder for AudD to
+fingerprint reliably even though it isn't clipping or silent — likely
+because it only uses a small slice of the 16-bit range, so quantization
+noise is proportionally more significant.
+
+Fixed via `config.CAPTURE_GAIN` (default `1.0`, a no-op): `audio_capture.
+_apply_gain()` multiplies every captured sample by this fixed linear
+factor before the WAV is written, with hard-clipping to the valid int16
+range as a safety net against wraparound distortion if it's set too high.
+It's a **fixed** multiplier, not per-clip auto-normalization, specifically
+because normalizing every clip to a target RMS would also amplify pure
+background noise/hum during silent gaps up to "loud," breaking
+`SILENCE_THRESHOLD`-based silence detection. A fixed gain scales silence
+and signal by the same factor, so their ratio — and thus the existing
+threshold — stays meaningful. `_apply_gain` is a pure function (no
+MOCK_MODE branch) for the same testability reasons as `_compute_rms_level`.
+
 ## DVinyl integration specifics
 
 DVinyl doesn't expose a documented public read API, so `collection_match.py`

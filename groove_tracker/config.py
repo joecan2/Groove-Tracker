@@ -37,6 +37,24 @@ SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "44100"))
 CHANNELS = int(os.getenv("CHANNELS", "2"))
 CLIP_SECONDS = int(os.getenv("CLIP_SECONDS", "12"))
 
+# Fixed linear gain applied to every captured sample before it's written to
+# disk. Some audio interfaces (e.g. the Behringer UCA202) have no hardware
+# capture-level control at all, so a clean line-level signal can still come
+# in quiet enough (low RMS) that fingerprinting services struggle with it —
+# not because it's inaudible, but because the signal only occupies a small
+# slice of the 16-bit range, so its useful detail is more exposed to
+# quantization noise. A fixed multiplier fixes that without changing the
+# balance between silence and signal (both get scaled by the same amount,
+# so SILENCE_THRESHOLD doesn't need retuning) — unlike per-clip auto-
+# normalization, which would also amplify pure noise/hum during silent
+# gaps up to "loud", breaking silence detection entirely.
+#
+# To tune: record a clip, check its level with get_audio_level(), and pick
+# a gain that brings it up to roughly 0.2-0.3 without clipping (samples are
+# hard-clipped to the valid int16 range as a safety net, but clipping still
+# degrades the recording, so aim below it rather than relying on it).
+CAPTURE_GAIN = float(os.getenv("CAPTURE_GAIN", "1.0"))
+
 # In mock mode, audio_capture returns this fixture file instead of recording.
 MOCK_AUDIO_FIXTURE = os.path.join(
     os.path.dirname(__file__), "..", "tests", "fixtures", "sample_clip.wav"

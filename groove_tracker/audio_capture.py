@@ -14,11 +14,19 @@ possibly RAM-backed area that filled up from accumulated temp files (see
 main.py's cleanup in process_once, which deletes each clip after use —
 this project-local location is a second line of defense in case that
 cleanup is ever skipped, e.g. by a crash).
+
+Recordings are also digitally amplified by a fixed CAPTURE_GAIN factor
+(see config.py) before being saved — some audio interfaces (e.g. the
+Behringer UCA202) have no hardware capture-level control, and a clean but
+quiet signal is otherwise hard for fingerprinting services to match
+reliably.
 """
 import array
 import os
 import tempfile
 import wave
+
+import numpy as np
 
 from . import config
 
@@ -50,9 +58,27 @@ def record_clip():
     )
     sd.wait()
 
+    audio = _apply_gain(audio, config.CAPTURE_GAIN)
+
     tmp = tempfile.NamedTemporaryFile(dir=TEMP_AUDIO_DIR, suffix=".wav", delete=False)
     sf.write(tmp.name, audio, config.SAMPLE_RATE)
     return tmp.name
+
+
+def _apply_gain(samples, gain):
+    """Multiplies 16-bit audio samples by a fixed linear gain, hard-clipping
+    to the valid int16 range to avoid wraparound distortion if the gain is
+    set too high. Pure function, no MOCK_MODE dependency — safe to unit
+    test directly.
+
+    A no-op (gain == 1.0) returns the input unchanged, so this is always
+    safe to call even when no gain is configured.
+    """
+    if gain == 1.0:
+        return samples
+    boosted = samples.astype(np.float64) * gain
+    clipped = np.clip(boosted, -32768, 32767)
+    return clipped.astype(np.int16)
 
 
 def _compute_rms_level(wav_path):
