@@ -51,13 +51,14 @@ def process_once(last_shown=None):
 
         print("Checking DVinyl collection...", flush=True)
         owned_release = find_owned_release(song["artist"], song["title"])
+        art_url = song.get("art_url")
         if owned_release:
             album = owned_release.get(config.FIELD_TITLE, song["album"])
             print(f"Owned release found: {album} — rendering to display...", flush=True)
-            display.render_now_playing(song["artist"], song["title"], album, owned=True)
+            display.render_now_playing(song["artist"], song["title"], album, owned=True, art_url=art_url)
         else:
             print(f"Not in collection, using AudD's album: {song['album']} — rendering to display...", flush=True)
-            display.render_now_playing(song["artist"], song["title"], song["album"], owned=False)
+            display.render_now_playing(song["artist"], song["title"], song["album"], owned=False, art_url=art_url)
 
         print("Display updated.", flush=True)
         return key

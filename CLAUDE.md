@@ -81,6 +81,31 @@ import, a real MongoDB connection) cannot be exercised here — don't try to
 "fix" failures caused by missing hardware/libraries in those paths; that's
 expected outside the real Pi.
 
+## Display layout and album art
+
+`display.py` auto-sizes text rather than using fixed font sizes: `_fit_text`
+tries font sizes from large down to small and picks the largest one whose
+wrapped lines (`_wrap_by_pixel`, measured with actual rendered pixel
+widths via `draw.textlength`, not a fixed character count) fit the
+allotted box. This is what makes a short title like "Baba O'Riley" fill
+the screen while a long one still shrinks to fit instead of overflowing.
+`_wrap_by_pixel` also hard-splits (`_split_long_word`) any single word
+that's wider than the column on its own -- this matters more than it
+might seem, since adding album art narrows the text column to ~215px, and
+an ordinary word at a large bold font size can exceed that on its own.
+
+Album art comes from `album_art.py`, fed by an `art_url` that
+`identify.py`'s `_extract_art_url` pulls out of AudD's optional Apple
+Music/Spotify enrichment (`return=apple_music,spotify` in the API
+request) -- AudD itself doesn't return artwork directly. Apple Music's
+artwork URL is a template with literal `{w}x{h}` placeholders that must
+be substituted with a real size before it's a fetchable URL; Spotify's
+`album.images` list is the fallback, largest first. Art is always
+optional: no URL, a failed fetch, or a decode error all return `None`
+rather than raising, and `display.py` falls back to a full-width
+text-only layout in that case -- never assume `art_url`/the fetched image
+will be present.
+
 ## Audio gain
 
 Some USB audio interfaces used for the line-out tap have no hardware
