@@ -10,7 +10,7 @@ import os
 import time
 
 from . import config, display, home_assistant
-from .audio_capture import is_signal_present, record_clip
+from .audio_capture import cleanup_stale_clips, is_signal_present, record_clip
 from .collection_match import find_owned_release, refresh_cache
 from .identify import identify_song
 
@@ -147,16 +147,23 @@ def _maybe_clear_for_unrecognized(state):
 
 def main_loop(once=False):
     refresh_cache()
-    last_cache_refresh = time.time()
+    last_maintenance = time.time()
     state = _initial_state()
 
     while True:
         try:
             state = process_once(state)
 
-            if time.time() - last_cache_refresh > 3600:
+            # Hourly maintenance: refresh the DVinyl cache, and sweep any
+            # recordings left behind in .tmp_audio/ by a crash (normal
+            # cleanup happens per-cycle in process_once and handles
+            # everything else -- see cleanup_stale_clips's docstring).
+            if time.time() - last_maintenance > 3600:
                 refresh_cache()
-                last_cache_refresh = time.time()
+                removed = cleanup_stale_clips()
+                if removed:
+                    print(f"Cleaned up {removed} stale recording(s) from .tmp_audio.", flush=True)
+                last_maintenance = time.time()
 
         except Exception as e:
             print(f"Error in main loop: {e}")

@@ -55,6 +55,13 @@ CLIP_SECONDS = int(os.getenv("CLIP_SECONDS", "12"))
 # degrades the recording, so aim below it rather than relying on it).
 CAPTURE_GAIN = float(os.getenv("CAPTURE_GAIN", "1.0"))
 
+# How old (seconds) a leftover recording in .tmp_audio/ must be before the
+# periodic cleanup sweep deletes it. Recordings are normally deleted
+# within seconds by the main loop right after use -- this only ever
+# catches ones orphaned by a crash, so the default is deliberately
+# generous (24 hours) rather than tuned tightly.
+TMP_AUDIO_MAX_AGE_SECONDS = int(os.getenv("TMP_AUDIO_MAX_AGE_SECONDS", "86400"))
+
 # In mock mode, audio_capture returns this fixture file instead of recording.
 MOCK_AUDIO_FIXTURE = os.path.join(
     os.path.dirname(__file__), "..", "tests", "fixtures", "sample_clip.wav"

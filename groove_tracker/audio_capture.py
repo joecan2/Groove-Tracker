@@ -24,6 +24,7 @@ reliably.
 import array
 import os
 import tempfile
+import time
 import wave
 
 import numpy as np
@@ -120,3 +121,52 @@ def is_signal_present(wav_path, threshold=None):
     if threshold is None:
         threshold = config.SILENCE_THRESHOLD
     return get_audio_level(wav_path) >= threshold
+
+
+def cleanup_stale_clips(max_age_seconds=None, directory=None, now=None):
+    """Deletes leftover recordings from TEMP_AUDIO_DIR older than
+    max_age_seconds. Returns how many were removed.
+
+    Recordings are normally deleted right after use by main.py's
+    process_once() (within the same poll cycle, so normally seconds old
+    at most) -- this is the periodic safety net for the case that doesn't
+    catch: a hard crash or SIGKILL mid-pipeline, after record_clip() has
+    already written the file but before process_once()'s cleanup runs.
+    Called roughly hourly from main_loop(), alongside the DVinyl cache
+    refresh.
+
+    Deliberately conservative (default measured in hours, not minutes) --
+    anything old enough to be swept up here was never going to be used
+    anyway, so there's no risk of deleting a clip still in flight.
+
+    No MOCK_MODE branch: MOCK_MODE never writes to TEMP_AUDIO_DIR in the
+    first place, so this is naturally a no-op there (the directory won't
+    exist) without needing to special-case it.
+    """
+    if max_age_seconds is None:
+        max_age_seconds = config.TMP_AUDIO_MAX_AGE_SECONDS
+    if directory is None:
+        directory = TEMP_AUDIO_DIR
+    if now is None:
+        now = time.time()
+
+    if not os.path.isdir(directory):
+        return 0
+
+    removed = 0
+    for name in os.listdir(directory):
+        if not name.endswith(".wav"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            age = now - os.path.getmtime(path)
+        except OSError:
+            continue
+        if age >= max_age_seconds:
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+
+    return removed
