@@ -2,14 +2,14 @@
 # One-command bootstrap for a freshly flashed Pi: clones this repo and runs
 # install.sh. Meant to be run via curl, e.g. from the Pi over SSH:
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/groove-tracker/main/bootstrap.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/joecan2/groove-tracker/main/bootstrap.sh)
 #
 # Replace YOUR_GITHUB_USERNAME below (and in the URL above, once you've
 # pushed this repo) with your actual GitHub username/repo.
 
 set -e
 
-REPO_URL="https://github.com/YOUR_GITHUB_USERNAME/groove-tracker.git"
+REPO_URL="https://github.com/joecan2/groove-tracker.git"
 CLONE_DIR="$HOME/groove-tracker"
 
 echo "=== Groove Tracker bootstrap ==="
