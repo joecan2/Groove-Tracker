@@ -1,3 +1,6 @@
+# Template — install.sh substitutes __USER__/__PROJECT_ROOT__ and installs
+# the result to /etc/systemd/system/groove-tracker.service. Don't enable
+# this file directly; run install.sh instead.
 [Unit]
 Description=Groove Tracker — vinyl now-playing display
 After=network-online.target sound.target
@@ -5,12 +8,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=joe
-WorkingDirectory=/home/joe/groove-tracker
-ExecStart=/home/joe/groove-tracker/venv/bin/python3 -m groove_tracker
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=__PROJECT_ROOT__/venv/bin/python3 -m groove_tracker
 Restart=on-failure
 RestartSec=10
-EnvironmentFile=/home/joe/groove-tracker/.env
+EnvironmentFile=__PROJECT_ROOT__/.env
 
 [Install]
 WantedBy=multi-user.target

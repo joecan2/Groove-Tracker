@@ -1,10 +1,35 @@
-# Groove Tracker — Hardware Setup Guide
+# Groove Tracker — Complete Setup Guide
 
-Hardware: Raspberry Pi Zero WH (ARMv6, 32-bit only), Waveshare 4.2" e-Paper
-Module, USB audio adapter, RCA Y-splitters tapped off the turntable's
-line-out.
+Everything needed to go from a blank SD card to a running device: wiring,
+OS setup, the one-command installer, configuration, testing, and a
+troubleshooting appendix covering every real issue hit while building
+this (dependency gaps, a mic-level audio adapter mangling recognition, a
+quiet line-level adapter with no gain control, DVinyl's actual schema,
+and more).
 
-## 1. Wiring
+## What you need
+
+- Raspberry Pi Zero WH (or similar — **ARMv6, 32-bit only** on the Zero
+  WH/Zero W; this guide assumes that constraint throughout)
+- Waveshare 4.2" e-Paper Module (this guide assumes the V2 hardware
+  revision — `epd4in2_V2`)
+- A USB audio interface with a genuine **line-level** input — a Behringer
+  UCA202 or similar. Avoid cheap "USB sound card" dongles built for
+  headset mics; see the Wiring section and the troubleshooting appendix
+  for why this matters more than it sounds like it should.
+- 2x RCA Y-splitters (to tap the turntable/receiver's line-out in parallel
+  with your existing powered speakers) + an RCA-to-3.5mm (or RCA-to-RCA,
+  depending on your interface) cable
+- A microSD card, Raspberry Pi Imager, and a way to SSH into the Pi
+  headless (no monitor/keyboard needed)
+- An [AudD](https://audd.io) API account (free tier is enough for
+  personal use)
+- Optional: a self-hosted [DVinyl](https://github.com/Kyonew/DVinyl)
+  instance with MongoDB, if you want owned-release matching
+- Optional: a Home Assistant instance, if you want a light to react to
+  playback
+
+## Wiring
 
 ### E-paper module (Waveshare 4.2", 8-pin cable to GPIO)
 
@@ -31,30 +56,36 @@ card slot corner.
 
 Turntable/receiver line-out → RCA Y-splitter (inline, one per channel) →
 one leg continues to your powered speakers as before → the other leg runs
-through the RCA-to-3.5mm cable into the USB audio adapter → USB audio
-adapter plugs into the Pi's micro-USB port via the OTG cable.
+into your USB audio interface → that plugs into the Pi's micro-USB port
+via an OTG cable (use the Pi Zero's **data** micro-USB port, not the power
+one — they're unlabeled and easy to mix up).
 
-If your USB audio adapter's line-in is tuned for microphone-level signals
-rather than line-level, a real turntable signal can overload/clip it —
-if levels come back near the max (close to 1.0) during testing in step 10,
-lower the capture gain with `alsamixer` before assuming something's wired
-wrong. Cheap mic-level adapters can also apply voice-oriented processing
-(auto gain, noise gating) that degrades recognition even when the level
-*looks* fine — if recognition fails consistently on tracks you know AudD
-can identify, try a true line-level interface (e.g. a Behringer UCA202)
-instead of chasing the gain knob further.
+**If your turntable/receiver has a LINE/PHONO output switch, set it to
+LINE.** PHONO output is the raw, un-equalized cartridge signal (weak,
+~5mV, with the RIAA curve not yet corrected — bass rolled off, treble
+boosted) meant to feed a dedicated phono preamp. Neither your powered
+speakers nor a plain line-level USB interface expect that; LINE gives you
+a full-level, already-corrected signal both can use directly.
 
-Some line-level interfaces (the UCA202 included) have **no adjustable
-capture gain at all** — `alsamixer` will show "This sound device does not
-have any capture controls." for them. If your recordings come back clean
-but consistently quiet (see step 10's level check and `CAPTURE_GAIN` in
-`.env.example`), that's expected and normal for this class of device —
-compensate with `CAPTURE_GAIN` instead of looking for a hardware knob that
-doesn't exist.
+**Use a genuine line-level USB audio interface, not a cheap mic-level USB
+dongle.** A mic-level input can apply voice-oriented processing (auto
+gain, noise gating, sometimes bandwidth limiting) to the signal — this can
+degrade fingerprint-relevant detail badly enough to break recognition
+*even when the recorded level looks completely normal* (this cost a lot
+of debugging time — see the troubleshooting appendix). A Behringer UCA202
+or similar dedicated line-level interface avoids this entirely.
 
-## 2. Flash the OS
+**A line-level interface may have no adjustable capture gain at all** —
+some (the UCA202 included) are fixed-level by design; `alsamixer` will
+show "This sound device does not have any capture controls." for these.
+That's normal, not a wiring problem. If your recordings come back clean
+but consistently quiet, that's what `CAPTURE_GAIN` in `.env` is for (see
+the Testing section) — a software boost applied after capture, since
+there's no hardware knob to turn.
 
-Use Raspberry Pi Imager. This board only supports **32-bit** Raspberry Pi
+## Flash the OS
+
+Use Raspberry Pi Imager. The Zero WH only supports **32-bit** Raspberry Pi
 OS (single-core ARMv6 chip) — Imager will correctly hide 64-bit options,
 that's expected. Choose Raspberry Pi OS Lite (32-bit). In the gear icon /
 advanced settings, set WiFi credentials, hostname, and **enable SSH**
@@ -64,112 +95,116 @@ First boot typically takes 3–5 minutes on this hardware (filesystem
 resize + SSH host key generation + WiFi association).
 
 If SSH gives "connection refused" after the Pi responds to ping: check
-that the `ssh` enable file actually got written to the boot partition
-(gear icon → Enable SSH in Imager is easy to miss), or re-flash.
+that the SSH-enable file actually got written to the boot partition (the
+gear icon → Enable SSH step in Imager is easy to miss), or re-flash.
 
-## 3. First boot
+## First boot
 
 ```bash
-ssh joe@<hostname>.local
-sudo raspi-config
-# Interface Options -> SPI -> Enable
+ssh <your-username>@<hostname>.local
 ```
 
-(The install script in the next step also does this automatically — the
-manual command above is here in case you want to confirm it separately.)
+(`install.sh`, in the next step, enables SPI for you automatically — no
+need to do it by hand via `raspi-config` first.)
 
-## 4. Copy the project to the Pi
+## Get the code onto the Pi
 
-From your computer:
+If you've pushed this repo to your own GitHub (recommended — that's what
+makes the one-command bootstrap below work):
 
 ```bash
-scp -r ./groove-tracker joe@<hostname>.local:~/
+bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/groove-tracker/main/bootstrap.sh)
 ```
 
-Or, once Samba is set up (see the main README/your own notes on that), you
-can just drag files over directly.
+That one command clones the repo to `~/groove-tracker` and immediately
+runs `install.sh` (see below) — the full "fresh SD card to installed" path
+in a single line. (Edit the `YOUR_GITHUB_USERNAME` placeholder in
+`bootstrap.sh` once you've pushed the repo, and in the command above.)
 
-## 5. Run the install script
+Otherwise, clone or copy it manually:
 
 ```bash
+git clone <your-repo-url> ~/groove-tracker
+# or, from your computer:  scp -r ./groove-tracker <user>@<hostname>.local:~/
 cd ~/groove-tracker
 bash install.sh
 ```
 
-This handles: system packages, enabling SPI, cloning the Waveshare e-Paper
-driver into the right place (the project root, not inside `groove_tracker/`
-— see the comment in `.gitignore` if you're curious why that distinction
-matters), creating the virtual environment, and installing Python
-dependencies. It's safe to re-run — it skips anything already done and
-won't overwrite an existing `.env`.
+## What `install.sh` automates
 
-<details>
-<summary>What it does, if you'd rather run each piece by hand</summary>
+Running `bash install.sh` from the project root (which `bootstrap.sh` does
+for you) handles, in order:
 
-```bash
-sudo apt update
-sudo apt install -y python3-pip python3-venv git \
-    libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1 libfreetype6
+1. **System packages** — everything discovered to be necessary the hard
+   way: `libopenjp2-7`, `libopenblas-dev` (the numpy BLAS dependency;
+   Debian trixie removed the older `libatlas-base-dev`), `portaudio19-dev`,
+   `libsndfile1` (needed by the `soundfile` package), `libfreetype6`
+   (needed by Pillow's text rendering — without it, the display silently
+   fails to render while everything else keeps working, which looks like
+   a hang).
+2. **Enables SPI** via `raspi-config nonint do_spi 0`.
+3. **Vendors the Waveshare e-Paper driver** into the project root (not
+   inside `groove_tracker/` — `display.py` imports it as a bare top-level
+   module, which only resolves from the root) using a sparse/partial git
+   clone. The full Waveshare repo has 33,000+ files for every product they
+   sell; a normal full clone can exhaust inodes or fill a RAM-backed
+   `/tmp` on a small SD card / low-RAM board like the Zero.
+4. **Python virtual environment** + `pip install -r requirements.txt`.
+5. **`.env`** — copies `.env.example` to `.env` if it doesn't exist yet
+   (never overwrites an existing one).
+6. **Samba file share** — installs `samba` and adds a `[groove-tracker]`
+   share pointing at the project directory, so you can drag files over
+   from your computer instead of `scp`-ing everything. Doesn't (can't)
+   set a Samba password for you — see the checklist it prints at the end.
+7. **systemd service** — installs `groove-tracker.service` (substituting
+   your actual username and project path into the template in
+   `systemd/`) and enables it to start on boot, but does **not** start it
+   yet, since `.env` still needs real values first.
 
-sudo raspi-config nonint do_spi 0
+It's safe to re-run any time — each step skips itself if already done, and
+it never touches an existing `.env`.
 
-cd ~/groove-tracker
-git clone --filter=blob:none --sparse --depth 1 https://github.com/waveshare/e-Paper.git .waveshare-sparse-clone
-(cd .waveshare-sparse-clone && git sparse-checkout set RaspberryPi_JetsonNano/python/lib/waveshare_epd)
-cp -r .waveshare-sparse-clone/RaspberryPi_JetsonNano/python/lib/waveshare_epd .
-rm -rf .waveshare-sparse-clone
+## Manual steps (the script prints this checklist too)
 
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
+1. Wire the display and audio tap, if you haven't already (above).
+2. Get an AudD API token at <https://audd.io> → `AUDD_API_TOKEN` in `.env`.
+3. Create a read-only MongoDB user for DVinyl (below) → `MONGO_URI` in
+   `.env`.
+4. Optional: create a Home Assistant Long-Lived Access Token (below) →
+   `HA_URL`/`HA_TOKEN` in `.env`.
+5. Set a Samba password: `sudo smbpasswd -a <your-username>` (separate
+   from your Pi login password — this is what you'll actually type when
+   connecting from your computer's file browser).
+6. Edit `.env` — `nano ~/groove-tracker/.env` — see the full reference
+   below.
 
-Note: `libopenblas-dev` replaces the older `libatlas-base-dev`, which
-Debian trixie (the current Raspberry Pi OS base) has removed — it provides
-the same BLAS library numpy needs. The `waveshare_epd` folder must land at
-the project root (sibling to `groove_tracker/`), not nested inside the
-package — `display.py` imports it as a bare top-level module, which only
-resolves from the project root. The sparse/partial clone above fetches
-only that one folder rather than the full repo — Waveshare's e-Paper repo
-has 33,000+ files covering every product they sell, and a full checkout
-can exhaust inodes or fill a RAM-backed `/tmp` on a small SD card / low-RAM
-board like the Zero. If you hit "unable to write file" errors from a full
-`git clone` here, that's what happened — clean up with
-`rm -rf /tmp/tmp.* ~/e-Paper` and use the sparse approach above instead.
+## `.env` reference
 
-</details>
+| Variable | Default | Notes |
+|---|---|---|
+| `MOCK_MODE` | `false` | `true` swaps in fake hardware/network for dev off the real device — leave `false` here. |
+| `AUDD_API_TOKEN` | *(none)* | From <https://audd.io>. |
+| `AUDIO_DEVICE` | *(blank = system default)* | Only set this if the wrong input device gets picked automatically. |
+| `SAMPLE_RATE` | `44100` | |
+| `CHANNELS` | `2` | Some cheap adapters only support mono — set to `1` if you get an `Invalid number of channels` error. |
+| `CLIP_SECONDS` | `12` | Length of each recording; ~12s is close to AudD's useful max. |
+| `CAPTURE_GAIN` | `1.0` | Fixed digital gain multiplier, applied before saving/recognizing. Leave at `1.0` unless your interface has no hardware gain control and recordings come back clean-but-quiet (see Testing below and the troubleshooting appendix). |
+| `MONGO_URI` | *(none)* | `mongodb://user:pass@host:27017/dvinyl?authSource=dvinyl` — use the read-only user, not admin credentials. |
+| `MONGO_DB_NAME` | `dvinyl` | |
+| `MONGO_COLLECTION_NAME` | `albums` | Confirmed against a real DVinyl instance — not `items`. |
+| `MONGO_FILTER_FIELD` / `MONGO_FILTER_VALUE` | `kind` / `Music` | Set `MONGO_FILTER_FIELD=` (empty) to skip filtering and query every document, if your instance differs. |
+| `FIELD_ARTIST` / `FIELD_TITLE` / `FIELD_FORMAT` / `FIELD_TRACKLIST` | `artist` / `title` / `media_type` / `tracklist` | Verify against your own instance — see below. |
+| `DISPLAY_MODEL` | `epd4in2_V2` | Waveshare driver submodule name; confirmed correct for the 4.2" V2 panel. |
+| `POLL_INTERVAL_SECONDS` | `25` | How often the main loop records and checks. |
+| `SILENCE_THRESHOLD` | `0.02` | RMS level above which a clip counts as "playing." |
+| `SILENCE_CLEAR_SECONDS` | `30` | How long the turntable must be *continuously* silent before the display clears. Debounced so a normal pause between tracks doesn't blank the screen. |
+| `UNRECOGNIZED_CLEAR_SECONDS` | `60` | Same idea, for "playing but AudD can't identify it" — clears a now-stale previous song instead of leaving it up forever. |
+| `HA_URL` / `HA_TOKEN` | *(blank = disabled)* | Home Assistant base URL + Long-Lived Access Token. |
+| `HA_PLAYING_ENTITY_ID` | `binary_sensor.groove_tracker_playing` | |
 
-After the script finishes, activate the venv for the rest of this guide:
+## Create a read-only MongoDB user for DVinyl
 
-```bash
-source venv/bin/activate
-```
-
-## 6. Fill in .env
-
-`cp .env.example .env` already happened via the script if `.env` didn't
-exist yet. Edit it now:
-
-```bash
-nano .env
-```
-
-Confirm `DISPLAY_MODEL` matches your panel — `epd4in2_V2` is confirmed
-correct for this hardware (check yours by running
-`grep "^from waveshare_epd import" ~/e-Paper/.../examples/epd_4in2_V2_test.py`
-against whichever demo script you used to test the display, if it
-differs). Leave `MOCK_MODE=false` on the real device. The remaining
-sections below walk through the values you still need to fill in.
-
-## 7. Get an AudD API token
-
-Sign up at https://audd.io — the free tier is enough for personal use.
-Paste the token into `.env` as `AUDD_API_TOKEN`.
-
-## 8. Create a read-only MongoDB user for DVinyl
-
-On your Unraid server, open a shell into the MongoDB container and run:
+On your DVinyl host, open a shell into the MongoDB container and run:
 
 ```javascript
 use dvinyl
@@ -180,90 +215,149 @@ db.createUser({
 })
 ```
 
-Make sure the Mongo container's port (usually 27017) is reachable from the
-Pi's subnet — this may mean publishing the port in Unraid's Docker UI if
-it isn't already (check with `docker ps`, look for a host-side mapping
-like `0.0.0.0:27017->27017/tcp`) — and update `MONGO_URI` in `.env` with
-your Unraid IP and the new credentials.
+Make sure the MongoDB container's port (usually `27017`) is actually
+reachable from the Pi's subnet, not just from inside the host (e.g. an
+Unraid Docker container needs that port published in its network settings
+— check with `docker ps` for a host-side mapping like
+`0.0.0.0:27017->27017/tcp`), then set `MONGO_URI` in `.env`.
 
-## 9. Verify your DVinyl schema
-
-Confirmed against a real instance: the collection is `albums` (not
-`items`), and there's no `collectionType` field — entry type is `kind`
-(e.g. `"Music"`), and the format field is `media_type` (e.g. `"cassette"`,
-`"Vinyl"`). These are already the defaults in `.env.example`. Still worth
-double-checking against your own database, since field names can vary by
-version or how entries were imported:
+**Verify your schema** — field names can vary by version or how entries
+were imported. Confirmed against one real instance: collection `albums`
+(not `items`), entry-type field `kind` (e.g. `"Music"`, not
+`collectionType`), format field `media_type` (e.g. `"Vinyl"`,
+`"cassette"`). Check yours:
 
 ```javascript
 db.albums.findOne()
 ```
 
-If your instance differs, adjust `MONGO_COLLECTION_NAME`,
-`MONGO_FILTER_FIELD`/`MONGO_FILTER_VALUE`, and the `FIELD_*` variables in
-`.env` to match. Set `MONGO_FILTER_FIELD=` (empty) to skip filtering
-entirely and query every document if your instance doesn't use `kind`.
+and adjust the `MONGO_*`/`FIELD_*` variables in `.env` to match if it
+differs.
 
-## 10. Test before running the full loop
+## Home Assistant integration (optional)
 
-With `MOCK_MODE=true` in `.env`, you can exercise the whole pipeline
-without any hardware or network dependencies — see the "Mock mode" section
-in the main README. Once that passes, switch to real hardware, testing one
-piece at a time:
+1. In Home Assistant: Profile page → scroll to "Long-lived access tokens"
+   → Create Token. Copy it.
+2. In `.env`, set `HA_URL` (e.g. `http://192.168.1.50:8123`) and
+   `HA_TOKEN`.
+3. Test it: `python3 -c "from groove_tracker.home_assistant import set_playing_state; set_playing_state(True)"`
+   — `binary_sensor.groove_tracker_playing` should appear as "on" in
+   Home Assistant under Developer Tools → States.
+4. The automation that watches this entity and controls a light
+   (`automation.groove_tracker_now_playing_light`) lives in Home
+   Assistant itself, not in this repo. It triggers on the binary
+   sensor's state changing, with a 30s debounce on the "off" transition
+   to avoid flicker between tracks, and calls `light.turn_on`/
+   `light.turn_off` on your target light.
+
+Leave `HA_URL`/`HA_TOKEN` blank to disable this feature entirely — the
+rest of the project works fine without it.
+
+## Samba (file sharing)
+
+`install.sh` already installed Samba and added the `[groove-tracker]`
+share. After running `sudo smbpasswd -a <your-username>` (step 5 above),
+connect from your computer:
+
+- **Windows**: File Explorer → address bar → `\\<hostname>\groove-tracker`
+- **Mac**: Finder → Cmd+K → `smb://<hostname>.local/groove-tracker`
+
+Use the Samba password you just set, not your Pi login password.
+
+## Testing before running the full loop
+
+With `MOCK_MODE=true` in `.env` (or as an env var), the whole pipeline
+runs end-to-end without any hardware or network dependencies — see the
+"Mock mode" section in the main README. Once that passes, test against
+real hardware, one piece at a time, keeping everything in the **same**
+terminal session (shell variables like `$CLIP` don't persist across
+separate SSH connections):
 
 ```bash
-# Test audio capture (records 12s — play a record while this runs)
+source venv/bin/activate
+
+# 1. Record a clip (12s — play a record while this runs)
 CLIP=$(python3 -c "from groove_tracker.audio_capture import record_clip; print(record_clip())")
 echo $CLIP
 
-# Test silence detection on that same clip
-python3 -c "from groove_tracker.audio_capture import get_audio_level, is_signal_present; print('Level:', get_audio_level('$CLIP')); print('Playing:', is_signal_present('$CLIP'))"
+# 2. Check its level
+python3 -c "from groove_tracker.audio_capture import get_audio_level; print(get_audio_level('$CLIP'))"
+```
 
-# Test AudD recognition on that same clip
+**If the level is well under ~0.15-0.2 even during a loud passage**, and
+`alsamixer` shows no capture controls for your device, raise
+`CAPTURE_GAIN` in `.env` (try `4`-`6` as a starting point), re-run steps 1
+and 2, and confirm the new level lands around `0.2`-`0.3` without
+clipping (a level pinned near `1.0` means the gain is too high). This is
+expected for fixed line-level interfaces like the UCA202 — no hardware
+gain to adjust, so this software boost is the intended fix.
+
+```bash
+# 3. Test AudD recognition on that same clip
 python3 -c "from groove_tracker.identify import identify_song; print(identify_song('$CLIP'))"
 
-# Test DVinyl matching (independent of audio — use something you know is in your collection)
+# 4. Test DVinyl matching (independent of audio -- use something you own)
 python3 -c "from groove_tracker.collection_match import find_owned_release; print(find_owned_release('Queen', 'Bohemian Rhapsody'))"
 
-# Test the display directly
-python3 -c "from groove_tracker import display; display.render_now_playing('Test Artist', 'Test Title', 'Test Album')"
+# 5. Test the display directly, including album art
+python3 -c "from groove_tracker import display; display.render_now_playing('Queen', 'Bohemian Rhapsody', 'Greatest Hits', owned=True, art_url='https://any-image-url.example/art.jpg')"
+
+# 6. Test clearing the display
+python3 -c "from groove_tracker import display; display.clear_display()"
+
+# 7. Run one full pass of the actual loop
+python3 -c "from groove_tracker.main import process_once; print(process_once())"
 ```
 
-Keep `$CLIP` and all of the above in the *same* terminal session — shell
-variables don't persist across separate SSH connections.
+## Enable and start the service
 
-**If `get_audio_level` comes back low (well under ~0.15-0.2) even during a
-loud passage, and `alsamixer` shows no capture controls for your device**,
-raise `CAPTURE_GAIN` in `.env` (try 4-6 as a starting point), re-run the
-capture + level check above, and confirm the new level lands around
-0.2-0.3 without clipping (watch for the level pinning near 1.0, which
-means the gain is too high). This is expected/normal for fixed line-level
-interfaces like the Behringer UCA202 — they have no hardware gain to
-adjust, so this software-side boost is the intended fix, not a
-workaround.
-
-## 11. Optional: Home Assistant "Now Playing" light
-
-If you want a nearby light to turn on/off with the music:
-
-1. In Home Assistant, go to your Profile page and scroll to "Long-lived access tokens" → Create Token. Copy it.
-2. In `.env`, set `HA_URL` (e.g. `http://192.168.1.50:8123`) and `HA_TOKEN` to that token.
-3. Test it reports correctly: `python3 -c "from groove_tracker.home_assistant import set_playing_state; set_playing_state(True)"` — you should see `binary_sensor.groove_tracker_playing` appear as "on" in Home Assistant (Developer Tools → States).
-4. The automation that watches this entity and controls the light was set up separately in Home Assistant (`automation.groove_tracker_now_playing_light`) — it's not part of this repo. If you need to recreate it, it triggers on that binary_sensor's state changing to "on"/"off" (with a 30s debounce on "off" to avoid flicker between tracks) and calls `light.turn_on`/`light.turn_off` on your target light/switch.
-
-This step is entirely optional — leave `HA_URL`/`HA_TOKEN` blank in `.env` and the rest of the project works normally without it.
-
-## 12. Run it for real
+`install.sh` already installed and enabled `groove-tracker.service`.
+Once `.env` is filled in and the hardware is wired:
 
 ```bash
-python3 -m groove_tracker
+sudo systemctl start groove-tracker
+sudo journalctl -u groove-tracker -f   # watch it live
 ```
 
-Once that works end-to-end, install it as a service so it starts on boot:
+You should see a cycle like:
 
-```bash
-sudo cp systemd/groove-tracker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now groove-tracker.service
-sudo journalctl -u groove-tracker -f   # watch the logs
 ```
+Recording clip...
+Signal level check: playing
+Identifying song via AudD...
+Recognized: Artist — Title
+Checking DVinyl collection...
+Owned release found: Album — rendering to display...
+Display updated.
+```
+
+and, after the turntable stops for `SILENCE_CLEAR_SECONDS`:
+
+```
+Silent for 30s+, clearing display.
+```
+
+---
+
+## Troubleshooting appendix
+
+Real issues hit while building this, in case you hit them again on a
+fresh install:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Package libatlas-base-dev is not available` | Debian trixie removed it | Use `libopenblas-dev` instead — `install.sh` already does this. |
+| `git clone` of the Waveshare repo fails with mass "unable to write file" errors | Full clone (33,000+ files) exhausts inodes or fills a RAM-backed `/tmp` | `install.sh` uses a sparse/partial clone into the project directory instead — no action needed. |
+| `ModuleNotFoundError: No module named 'waveshare_epd'` | The driver folder ended up nested inside `groove_tracker/` instead of the project root | Move it to the project root (sibling of `groove_tracker/`); `install.sh` places it correctly automatically. |
+| `ModuleNotFoundError: No module named 'gpiozero'` | Newer Waveshare driver versions need `gpiozero`/`lgpio`, not just `RPi.GPIO` | Already in `requirements.txt`. |
+| `cannot load library 'libsndfile.so'` | The `soundfile` package needs the system `libsndfile1` library | `install.sh` installs it. |
+| `libfreetype.so.6: cannot open shared object file` | Pillow's text rendering needs `libfreetype6` | `install.sh` installs it. Symptom otherwise: the service runs and recognizes songs fine, but the display never actually updates (the render call throws, main loop's broad exception handler swallows and logs it). |
+| Sound recognized inconsistently, or not at all, even on mainstream tracks, despite a clean-looking (non-silent, non-clipped) recording | A mic-level USB audio adapter applying voice-oriented DSP (auto gain, noise gating) to the signal | Use a genuine line-level interface (e.g. Behringer UCA202) instead. |
+| Clean recording, but consistently quiet (e.g. RMS ~0.05) with no hardware gain control (`alsamixer` shows "This sound device does not have any capture controls") | Some line-level interfaces (UCA202 included) are fixed-level by design | Raise `CAPTURE_GAIN` in `.env` (software boost) — see Testing above. |
+| Turntable output sounds thin/hollow and too quiet, or too loud/distorted, through the tap specifically (speakers still sound fine) | Turntable/receiver's LINE/PHONO output switch set to PHONO | Set it to LINE. |
+| `pymongo.errors.ServerSelectionTimeoutError: Connection refused` | MongoDB's port isn't published to the LAN, or the read-only user doesn't exist yet | Publish the port in your Docker host's network settings; create the user (see above). |
+| MongoDB `AuthenticationFailed` | Wrong password, or user created in the wrong database's user table | Recreate the user with `use dvinyl` first, so it's scoped correctly; double check `authSource=dvinyl` in `MONGO_URI`. |
+| Samba: "No path in service groove-tracker" in logs, or Windows says "you need permission" | Malformed share block in `smb.conf` (a stray typo is enough) | `install.sh`'s heredoc-based share block avoids hand-typing this; if it still happens, run `testparm` to validate `smb.conf` before restarting `smbd`. |
+| `/tmp` fills up after the service runs for hours (`Error opening '/tmp/tmpXXXXXXXX.wav'`) | An early version leaked a temp WAV file every poll cycle | Already fixed in this codebase — clips are written to a project-local, cleaned-up `.tmp_audio/` directory and deleted after each use. No action needed on a fresh install. |
+| Display stays blank with no errors in the logs | Was an observability gap in an earlier version — a silent failure (e.g. a miswired BUSY pin) looked identical to silent success | Already fixed — `main.py` logs every pipeline stage; `journalctl -u groove-tracker -f` will show exactly where it stops now. |
+| Display keeps showing an old song after the turntable stops, or after a different unrecognized track starts | Nothing used to ever clear the display | Already fixed via the debounced `SILENCE_CLEAR_SECONDS`/`UNRECOGNIZED_CLEAR_SECONDS` logic. If it's happening within those windows, that's expected — it hasn't debounced yet. |

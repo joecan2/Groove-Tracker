@@ -24,35 +24,49 @@ turntable line-out (tapped)
 
 `main.py` loops: record a short clip, ask AudD what it is, check whether
 you own a release with that track, then render the result — preferring
-your own release's title/format when there's a match.
+your own release's title/format when there's a match. The display
+auto-sizes text to fill the panel, shows album art when AudD's metadata
+includes it, and clears itself (after a short debounce) once the
+turntable stops or a track can't be identified, so it never shows stale
+info indefinitely.
 
 ## Project layout
 
 ```
 groove_tracker/
 ├── config.py            # settings, loaded from .env
-├── audio_capture.py      # records from the line-in tap
-├── identify.py            # AudD API wrapper
+├── audio_capture.py      # records from the line-in tap, applies CAPTURE_GAIN
+├── identify.py            # AudD API wrapper, extracts album art URL
 ├── collection_match.py   # matches recognized tracks against your DVinyl collection
-├── display.py             # renders to the Waveshare e-paper panel
-└── main.py                 # the loop tying it all together
+├── album_art.py           # fetches/crops album art for the display
+├── display.py             # renders to the Waveshare e-paper panel (auto-sized text + art)
+└── main.py                 # the loop tying it all together, incl. debounced display clearing
 waveshare_epd/               # vendored driver lib, project root (not in git — see docs/SETUP.md)
 tests/                       # pytest suite, runs without real hardware
-docs/SETUP.md               # wiring diagrams + full install walkthrough
-systemd/groove-tracker.service
+docs/SETUP.md               # complete wiring + install + troubleshooting guide
+install.sh                   # one-command setup: packages, SPI, driver, venv, Samba, systemd
+bootstrap.sh                 # clones this repo + runs install.sh, for a fresh Pi
+systemd/groove-tracker.service  # template, filled in by install.sh
 ```
 
 ## Setup
 
-See [`docs/SETUP.md`](docs/SETUP.md) for the full hardware + OS walkthrough.
-Quick version once the project is copied to the Pi:
+See [`docs/SETUP.md`](docs/SETUP.md) for the complete guide (wiring,
+`.env` reference, testing, troubleshooting). Quick version, on a freshly
+flashed Pi with SSH enabled:
 
 ```bash
-bash install.sh          # system packages, SPI, Waveshare driver, venv, pip installs
-source venv/bin/activate
-cp .env.example .env     # skipped by install.sh if .env already exists
-nano .env                # fill in AUDD_API_TOKEN, MONGO_URI, etc.
-python3 -m groove_tracker
+bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/groove-tracker/main/bootstrap.sh)
+```
+
+That clones this repo and runs `install.sh`, which handles system
+packages, SPI, the Waveshare driver, the Python venv, a Samba file share,
+and the systemd service (installed + enabled, not started yet). Then:
+
+```bash
+cd ~/groove-tracker
+nano .env                # fill in AUDD_API_TOKEN, MONGO_URI, etc. -- see docs/SETUP.md
+sudo systemctl start groove-tracker
 ```
 
 ## Mock mode
