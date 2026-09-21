@@ -15,12 +15,31 @@ from .collection_match import find_owned_release, refresh_cache
 from .identify import identify_song
 
 
-def process_once(last_shown=None):
+def _initial_state():
+    """Tracks what's currently on the display, and how long the turntable
+    has been continuously silent or continuously unrecognized, so the
+    display can be cleared after a debounce period (see
+    _maybe_clear_for_silence/_maybe_clear_for_unrecognized) instead of
+    either never clearing (stale info stays up forever) or clearing on
+    every brief pause between tracks.
+    """
+    return {
+        "last_shown": None,  # (artist, title) currently on the display, or None
+        "displaying": False,  # whether the display currently shows song info (vs. blank)
+        "silence_since": None,  # time.time() when the current silence streak began, or None
+        "unrecognized_since": None,  # time.time() when the current "playing but unrecognized" streak began, or None
+    }
+
+
+def process_once(state=None):
     """Runs a single capture -> identify -> match -> display pass.
 
-    Returns the (artist, title) tuple that was shown, or last_shown
-    unchanged if nothing new was recognized.
+    Returns the updated state dict (see _initial_state) -- pass it back in
+    on the next call, the same way main_loop does.
     """
+    if state is None:
+        state = _initial_state()
+
     print("Recording clip...", flush=True)
     wav_path = record_clip()
     try:
@@ -34,20 +53,27 @@ def process_once(last_shown=None):
             print(f"Error reporting to Home Assistant: {e}", flush=True)
 
         if not playing:
-            return last_shown
+            state["unrecognized_since"] = None
+            return _maybe_clear_for_silence(state)
+
+        # Something is playing -- any silence streak is over.
+        state["silence_since"] = None
 
         print("Identifying song via AudD...", flush=True)
         song = identify_song(wav_path)
 
         if not song:
             print("No song recognized this pass.", flush=True)
-            return last_shown
+            return _maybe_clear_for_unrecognized(state)
+
+        # A song was recognized -- any unrecognized streak is over.
+        state["unrecognized_since"] = None
 
         key = (song["artist"], song["title"])
         print(f"Recognized: {song['artist']} — {song['title']}", flush=True)
-        if key == last_shown:
+        if key == state["last_shown"] and state["displaying"]:
             print("Same as last shown, not re-rendering.", flush=True)
-            return last_shown
+            return state
 
         print("Checking DVinyl collection...", flush=True)
         owned_release = find_owned_release(song["artist"], song["title"])
@@ -61,7 +87,9 @@ def process_once(last_shown=None):
             display.render_now_playing(song["artist"], song["title"], song["album"], owned=False, art_url=art_url)
 
         print("Display updated.", flush=True)
-        return key
+        state["last_shown"] = key
+        state["displaying"] = True
+        return state
     finally:
         # Always clean up the recorded clip, even if something above raised
         # -- this was previously leaking a ~1MB file every poll cycle
@@ -73,14 +101,58 @@ def process_once(last_shown=None):
                 pass
 
 
+def _maybe_clear_for_silence(state):
+    """Clears the display after SILENCE_CLEAR_SECONDS of *continuous*
+    silence -- not immediately, so a normal pause between tracks or while
+    flipping a record doesn't blank the screen. `silence_since` marks when
+    the current streak began; process_once resets it to None the moment
+    audio is present again.
+    """
+    now = time.time()
+    if state["silence_since"] is None:
+        state["silence_since"] = now
+        return state
+
+    if state["displaying"] and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
+        print(f"Silent for {config.SILENCE_CLEAR_SECONDS}s+, clearing display.", flush=True)
+        display.clear_display()
+        state["displaying"] = False
+        # Force a fresh render next time, even if the same song resumes --
+        # otherwise it'd be (wrongly) treated as "unchanged" and skipped.
+        state["last_shown"] = None
+
+    return state
+
+
+def _maybe_clear_for_unrecognized(state):
+    """Same debounce idea as _maybe_clear_for_silence, but for "the
+    turntable is playing something, AudD just isn't recognizing it" --
+    without this, a previously-recognized song's info would stay on
+    screen indefinitely once a different, unrecognized track starts,
+    making it look like recognition is still working when it isn't.
+    """
+    now = time.time()
+    if state["unrecognized_since"] is None:
+        state["unrecognized_since"] = now
+        return state
+
+    if state["displaying"] and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
+        print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, clearing stale display.", flush=True)
+        display.clear_display()
+        state["displaying"] = False
+        state["last_shown"] = None
+
+    return state
+
+
 def main_loop(once=False):
     refresh_cache()
     last_cache_refresh = time.time()
-    last_shown = None
+    state = _initial_state()
 
     while True:
         try:
-            last_shown = process_once(last_shown)
+            state = process_once(state)
 
             if time.time() - last_cache_refresh > 3600:
                 refresh_cache()

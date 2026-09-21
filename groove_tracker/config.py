@@ -99,6 +99,20 @@ MOCK_DISPLAY_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "mock_ou
 # if turntable motor hum alone triggers "playing".
 SILENCE_THRESHOLD = float(os.getenv("SILENCE_THRESHOLD", "0.02"))
 
+# --- Display staleness ---
+# The display only ever gets a fresh render when a *new* song is
+# recognized -- without these, whatever was last shown would stay on
+# screen indefinitely after the turntable stops, or after a different,
+# unrecognized track starts playing. Both are debounced (not instant) so
+# a normal pause between tracks or while flipping a record doesn't blank
+# the screen.
+#
+# Seconds of continuous silence before the display is cleared.
+SILENCE_CLEAR_SECONDS = int(os.getenv("SILENCE_CLEAR_SECONDS", "30"))
+# Seconds of continuous "something is playing, but AudD isn't recognizing
+# it" before the (now-stale) previously-shown song info is cleared.
+UNRECOGNIZED_CLEAR_SECONDS = int(os.getenv("UNRECOGNIZED_CLEAR_SECONDS", "60"))
+
 # --- Home Assistant ---
 # Optional — leave HA_URL/HA_TOKEN blank to disable this feature entirely.
 # HA_TOKEN is a Long-Lived Access Token: create one in Home Assistant under

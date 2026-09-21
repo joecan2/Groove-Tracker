@@ -106,6 +106,36 @@ rather than raising, and `display.py` falls back to a full-width
 text-only layout in that case -- never assume `art_url`/the fetched image
 will be present.
 
+## Display staleness (debounced clearing)
+
+The display only gets a fresh render when a *new* song is recognized, so
+without explicit handling, whatever was last shown would stay up
+indefinitely after the turntable stops, or after a different,
+unrecognized track starts playing (looking like recognition is still
+working when it's actually just stale). `main.py` handles both, via a
+small state dict threaded through `process_once`/`main_loop` (see
+`_initial_state`) instead of the old bare `last_shown` tuple:
+
+- `_maybe_clear_for_silence` clears the display after
+  `SILENCE_CLEAR_SECONDS` of *continuous* silence.
+- `_maybe_clear_for_unrecognized` does the same after
+  `UNRECOGNIZED_CLEAR_SECONDS` of the turntable playing something AudD
+  keeps failing to recognize.
+
+Both are **debounced**, not instant -- the timer starts on the first
+silent/unrecognized poll and only actually clears once it's held past the
+threshold on a later poll. This matters because a normal pause between
+tracks or while flipping a record would otherwise blank-flash the panel
+on every gap, which is both annoying and an unnecessary e-paper refresh
+(these panels visibly flicker on a full refresh, and refreshes aren't
+meant to happen constantly). Same reasoning as the existing 30s debounce
+on the Home Assistant light's off-transition.
+
+When either debounce fires, `state["last_shown"]` is reset to `None` --
+without that, the same song resuming after a pause would be (wrongly)
+treated as "unchanged" and skipped, leaving the display blank even though
+something is playing again.
+
 ## Audio gain
 
 Some USB audio interfaces used for the line-out tap have no hardware

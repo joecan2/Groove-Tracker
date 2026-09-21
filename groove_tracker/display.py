@@ -189,3 +189,26 @@ def render_now_playing(artist, title, album, owned=False, art_url=None):
     image = _compose_image(artist, title, album, owned, epd.width, epd.height, art_image=art_image)
     epd.display(epd.getbuffer(image))
     epd.sleep()
+
+
+def clear_display():
+    """Blanks the display -- used when the turntable has been silent (or
+    playing something unrecognized) long enough that whatever's currently
+    shown counts as stale. See main.py's debounce logic for what "long
+    enough" means; this function itself just does the clearing.
+    """
+    if config.MOCK_MODE:
+        os.makedirs(config.MOCK_DISPLAY_OUTPUT_DIR, exist_ok=True)
+        blank = Image.new("1", MOCK_DISPLAY_SIZE, 255)
+        out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
+        blank.save(out_path)
+        print("[mock display] Cleared (idle)", flush=True)
+        return
+
+    import importlib
+
+    epd_module = importlib.import_module(f"waveshare_epd.{config.DISPLAY_MODEL}")
+    epd = epd_module.EPD()
+    epd.init()
+    epd.Clear()
+    epd.sleep()
