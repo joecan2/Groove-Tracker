@@ -66,11 +66,36 @@ def record_clip():
     return tmp.name
 
 
+CEILING = 32767.0
+# Fraction of full scale below which _soft_limit leaves the signal
+# completely untouched (linear). Only the portion above this knee gets
+# smoothly saturated.
+KNEE_RATIO = 0.8
+
+
 def _apply_gain(samples, gain):
-    """Multiplies 16-bit audio samples by a fixed linear gain, hard-clipping
-    to the valid int16 range to avoid wraparound distortion if the gain is
-    set too high. Pure function, no MOCK_MODE dependency — safe to unit
-    test directly.
+    """Multiplies 16-bit audio samples by a fixed linear gain, then runs
+    the result through a soft-knee limiter (see _soft_limit) instead of a
+    hard clip. Pure function, no MOCK_MODE dependency — safe to unit test
+    directly.
+
+    Why not a hard clip: a single fixed CAPTURE_GAIN has to work across
+    records mastered at very different loudness levels. A value tuned
+    against a quieter reference track will push a hotter-mastered record's
+    peaks well past full scale, and a hard np.clip() there produces
+    flat-topped, sharp-cornered waveforms at every one of those peaks —
+    broadband harmonic distortion that's far more damaging to audio
+    fingerprinting than the RMS level alone suggests. This was confirmed
+    against a real failing recognition ("Complicated" by Avril Lavigne,
+    healthy 0.32 RMS, correct turntable speed) where direct WAV analysis
+    found 0.385% of samples sitting at the *exact* digital ceiling — the
+    signature of hard clipping, not natural saturation.
+
+    The soft knee keeps everything below KNEE_RATIO * full-scale exactly
+    linear — so normal-level content, and the SILENCE_THRESHOLD ratio
+    between quiet and loud clips, are completely unaffected — and only
+    rounds off the portion above that via a smooth tanh curve, instead of
+    flattening it.
 
     A no-op (gain == 1.0) returns the input unchanged, so this is always
     safe to call even when no gain is configured.
@@ -78,8 +103,32 @@ def _apply_gain(samples, gain):
     if gain == 1.0:
         return samples
     boosted = samples.astype(np.float64) * gain
-    clipped = np.clip(boosted, -32768, 32767)
-    return clipped.astype(np.int16)
+    limited = _soft_limit(boosted)
+    return limited.astype(np.int16)
+
+
+def _soft_limit(boosted, ceiling=CEILING, knee_ratio=KNEE_RATIO):
+    """Soft-knee limiter: linear below knee_ratio * ceiling, tanh-based
+    smooth saturation above it, asymptoting toward (but never reaching)
+    ceiling. Pure function of the already gain-multiplied signal — no
+    MOCK_MODE dependency, safe to unit test directly.
+
+    Two different input peaks that would both hard-clip to the identical
+    ceiling value under np.clip() map to two different (but both near-
+    ceiling) output values here — that's what avoids the flat-topped
+    plateau that causes broadband distortion.
+    """
+    knee = knee_ratio * ceiling
+    headroom = ceiling - knee
+    magnitude = np.abs(boosted)
+    over_knee = magnitude > knee
+    saturated = knee + headroom * np.tanh((magnitude - knee) / headroom)
+    limited_magnitude = np.where(over_knee, saturated, magnitude)
+    result = np.sign(boosted) * limited_magnitude
+    # tanh only asymptotes toward the ceiling and should never exceed it,
+    # but guard against float rounding at the extreme edge before the
+    # final int16 cast.
+    return np.clip(result, -32768, 32767)
 
 
 def _compute_rms_level(wav_path):

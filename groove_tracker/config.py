@@ -50,9 +50,11 @@ CLIP_SECONDS = int(os.getenv("CLIP_SECONDS", "12"))
 # gaps up to "loud", breaking silence detection entirely.
 #
 # To tune: record a clip, check its level with get_audio_level(), and pick
-# a gain that brings it up to roughly 0.2-0.3 without clipping (samples are
-# hard-clipped to the valid int16 range as a safety net, but clipping still
-# degrades the recording, so aim below it rather than relying on it).
+# a gain that brings it up to roughly 0.2-0.3. Peaks above ~80% of full
+# scale are soft-limited (see _soft_limit in audio_capture.py) rather than
+# hard-clipped, as a hedge against records mastered louder than whatever
+# you tuned against -- but that's a safety net, not a tuning target, so
+# aim below it rather than relying on it.
 CAPTURE_GAIN = float(os.getenv("CAPTURE_GAIN", "1.0"))
 
 # How old (seconds) a leftover recording in .tmp_audio/ must be before the

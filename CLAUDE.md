@@ -136,6 +136,24 @@ without that, the same song resuming after a pause would be (wrongly)
 treated as "unchanged" and skipped, leaving the display blank even though
 something is playing again.
 
+## .tmp_audio cleanup
+
+`main.py`'s `process_once()` deletes each recording right after use
+(`try`/`finally`, see the temp-file-leak fix history), so `.tmp_audio/`
+normally never accumulates anything -- but a hard crash or `SIGKILL`
+between `record_clip()` writing the file and that `finally` block running
+would leave one behind, and nothing used to sweep those up. `main_loop()`
+now calls `audio_capture.cleanup_stale_clips()` on the same hourly
+cadence as the DVinyl cache refresh, deleting any `.wav` in
+`TEMP_AUDIO_DIR` older than `TMP_AUDIO_MAX_AGE_SECONDS` (default 24 hours
+-- deliberately generous, since a normal recording is used and deleted
+within seconds, so anything that old was never going to be used anyway).
+The sweep itself is checked hourly; the age threshold just controls how
+old a file must be before that hourly check removes it.
+Pure function (age/directory/`now` are all injectable), no `MOCK_MODE`
+branch needed since `MOCK_MODE` never writes to `TEMP_AUDIO_DIR` in the
+first place.
+
 ## Audio gain
 
 Some USB audio interfaces used for the line-out tap have no hardware
@@ -148,15 +166,44 @@ noise is proportionally more significant.
 
 Fixed via `config.CAPTURE_GAIN` (default `1.0`, a no-op): `audio_capture.
 _apply_gain()` multiplies every captured sample by this fixed linear
-factor before the WAV is written, with hard-clipping to the valid int16
-range as a safety net against wraparound distortion if it's set too high.
-It's a **fixed** multiplier, not per-clip auto-normalization, specifically
-because normalizing every clip to a target RMS would also amplify pure
-background noise/hum during silent gaps up to "loud," breaking
-`SILENCE_THRESHOLD`-based silence detection. A fixed gain scales silence
-and signal by the same factor, so their ratio — and thus the existing
-threshold — stays meaningful. `_apply_gain` is a pure function (no
+factor before the WAV is written. It's a **fixed** multiplier, not
+per-clip auto-normalization, specifically because normalizing every clip
+to a target RMS would also amplify pure background noise/hum during
+silent gaps up to "loud," breaking `SILENCE_THRESHOLD`-based silence
+detection. A fixed gain scales silence and signal by the same factor, so
+their ratio — and thus the existing threshold — stays meaningful.
+`_apply_gain` and its helper `_soft_limit` are pure functions (no
 MOCK_MODE branch) for the same testability reasons as `_compute_rms_level`.
+
+**Soft-knee limiting, not a hard clip.** A single fixed `CAPTURE_GAIN` has
+to work across records mastered at very different loudness levels — a
+value tuned against one (quieter) reference track can push a
+hotter-mastered record's peaks well past full scale. The original
+implementation used `np.clip()` to the exact int16 ceiling, which produces
+flat-topped, sharp-cornered waveforms at every one of those peaks —
+broadband harmonic distortion. This was root-caused as a real recognition
+failure: a healthy-RMS (0.32), correctly-pitched recording of "Complicated"
+by Avril Lavigne consistently failed AudD recognition, and direct WAV
+analysis of the failing clip found 0.385% of samples sitting at the
+*exact* digital ceiling (32767/-32768) — the signature of hard clipping,
+not natural analog saturation (which a much more heavily-clipped clip
+survived fine earlier in the project, before the gain fix existed at all).
+
+`_soft_limit()` replaces the hard clip: everything below `KNEE_RATIO`
+(80%) of full scale passes through completely linearly — so normal-level
+content, and the silence/signal ratio the threshold depends on, are
+unaffected — and only the portion above that knee is smoothly saturated
+via `tanh`, asymptoting toward the ceiling instead of slamming into it.
+Two different peaks that would both hard-clip to the identical ceiling
+value now map to two different (still near-ceiling) output values, which
+is what avoids the flat plateau. Re-running the actual failing clip's
+samples through `_soft_limit()` eliminates exact-ceiling hits entirely
+(4078 → 0).
+
+This is a hedge against mastering-loudness variance, not a substitute for
+reasonable tuning — if a lot of records are pushing well past the knee,
+`CAPTURE_GAIN` is probably still set higher than it needs to be; see
+`.env.example` for how to check.
 
 ## DVinyl integration specifics
 
