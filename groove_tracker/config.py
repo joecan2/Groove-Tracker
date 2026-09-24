@@ -9,7 +9,18 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    load_dotenv()
+except UnicodeDecodeError:
+    # A .env file edited/saved on Windows (e.g. via Notepad's default
+    # "ANSI" save option) can end up saved as Windows-1252 instead of
+    # UTF-8. This shows up as a decode error on bytes like 0x97 -- an em
+    # dash (-) in that encoding, easy to pick up by copy-pasting from
+    # .env.example's comments. Retry once assuming that encoding rather
+    # than crashing the whole service outright; every value dotenv reads
+    # is treated as plain text either way, so this is safe even if the
+    # file turns out to be UTF-8 with no non-ASCII characters at all.
+    load_dotenv(encoding="cp1252")
 
 
 def _bool_env(name, default=False):
