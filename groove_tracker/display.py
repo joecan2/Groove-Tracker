@@ -152,17 +152,28 @@ def _compose_image(artist, title, album, owned, width, height, art_image=None):
     artist_box_h = int(usable_height * 0.32)
     album_box_h = usable_height - title_box_h - artist_box_h
 
+    # max_size here is a ceiling, not a target -- _fit_text always picks
+    # the largest size that actually fits the box, so raising these lets
+    # short text (e.g. "Baba O'Riley") grow to fill its box instead of
+    # being capped well below what the box has room for. Longer text
+    # still shrinks automatically same as before; only the upper bound
+    # moved.
+    # max_size is deliberately set well above anything that could actually
+    # fit any of these boxes -- _fit_text always picks the largest size
+    # that fits, so this just makes sure the box's own width/height are
+    # the real limit, not an arbitrary cap. Longer text still shrinks
+    # automatically same as before.
     y = MARGIN
-    font, lines, line_h = _fit_text(draw, title, FONT_PATH_BOLD, text_width, title_box_h, max_size=44, min_size=18)
+    font, lines, line_h = _fit_text(draw, title, FONT_PATH_BOLD, text_width, title_box_h, max_size=140, min_size=18)
     _draw_block(draw, lines, font, line_h, text_x, y, title_box_h)
     y += title_box_h
 
-    font, lines, line_h = _fit_text(draw, artist, FONT_PATH_REGULAR, text_width, artist_box_h, max_size=32, min_size=14)
+    font, lines, line_h = _fit_text(draw, artist, FONT_PATH_REGULAR, text_width, artist_box_h, max_size=140, min_size=14)
     _draw_block(draw, lines, font, line_h, text_x, y, artist_box_h)
     y += artist_box_h
 
     album_label = album if not owned else f"{album}  ★ in your collection"
-    font, lines, line_h = _fit_text(draw, album_label, FONT_PATH_REGULAR, text_width, album_box_h, max_size=24, min_size=12)
+    font, lines, line_h = _fit_text(draw, album_label, FONT_PATH_REGULAR, text_width, album_box_h, max_size=140, min_size=12)
     _draw_block(draw, lines, font, line_h, text_x, y, album_box_h)
 
     return image
@@ -187,6 +198,58 @@ def render_now_playing(artist, title, album, owned=False, art_url=None):
     epd.Clear()
 
     image = _compose_image(artist, title, album, owned, epd.width, epd.height, art_image=art_image)
+    epd.display(epd.getbuffer(image))
+    epd.sleep()
+
+
+def _compose_message_image(text, width, height):
+    """Centered, word-wrapped status message filling the whole panel -- no
+    album art, no artist/album blocks, just the message. Used for
+    render_message (e.g. "Song not recognized"), as distinct from the
+    three-block song-info layout in _compose_image.
+    """
+    image = Image.new("1", (width, height), 255)
+    draw = ImageDraw.Draw(image)
+
+    max_width = width - 2 * MARGIN
+    max_height = height - 2 * MARGIN
+    font, lines, line_h = _fit_text(draw, text, FONT_PATH_BOLD, max_width, max_height, max_size=36, min_size=16)
+
+    total_height = line_h * len(lines)
+    y = MARGIN + max(0, (max_height - total_height) // 2)
+    for line in lines:
+        line_width = draw.textlength(line, font=font)
+        x = MARGIN + max(0, (max_width - line_width) // 2)
+        draw.text((x, y), line, font=font, fill=0)
+        y += line_h
+
+    return image
+
+
+def render_message(text):
+    """Renders a short centered status message instead of song info --
+    used when the turntable is playing something AudD can't identify, so
+    the display says so explicitly (e.g. "Song not recognized") rather
+    than either showing stale song info or going silently blank. See
+    main.py's _maybe_clear_for_unrecognized for the debounce logic that
+    decides when this gets called.
+    """
+    if config.MOCK_MODE:
+        os.makedirs(config.MOCK_DISPLAY_OUTPUT_DIR, exist_ok=True)
+        image = _compose_message_image(text, *MOCK_DISPLAY_SIZE)
+        out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
+        image.save(out_path)
+        print(f"[mock display] Message: {text} -> {out_path}", flush=True)
+        return
+
+    import importlib
+
+    epd_module = importlib.import_module(f"waveshare_epd.{config.DISPLAY_MODEL}")
+    epd = epd_module.EPD()
+    epd.init()
+    epd.Clear()
+
+    image = _compose_message_image(text, epd.width, epd.height)
     epd.display(epd.getbuffer(image))
     epd.sleep()
 
