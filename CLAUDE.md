@@ -114,27 +114,45 @@ indefinitely after the turntable stops, or after a different,
 unrecognized track starts playing (looking like recognition is still
 working when it's actually just stale). `main.py` handles both, via a
 small state dict threaded through `process_once`/`main_loop` (see
-`_initial_state`) instead of the old bare `last_shown` tuple:
+`_initial_state`) instead of the old bare `last_shown` tuple. The dict's
+`screen_state` field is a tri-state (`"blank"` / `"song"` / `"unrecognized"`)
+-- not a plain boolean -- because there are three distinct things the
+panel can be showing, not two:
 
-- `_maybe_clear_for_silence` clears the display after
-  `SILENCE_CLEAR_SECONDS` of *continuous* silence.
-- `_maybe_clear_for_unrecognized` does the same after
+- `_maybe_clear_for_silence` blanks the display (`display.clear_display()`)
+  after `SILENCE_CLEAR_SECONDS` of *continuous* silence. This fires
+  regardless of whether `screen_state` was `"song"` or `"unrecognized"` --
+  a stale "Song not recognized" message needs clearing too, once the
+  turntable actually stops, not just stale song info.
+- `_maybe_clear_for_unrecognized` renders an explicit **"Song not
+  recognized"** message (`display.render_message()`) after
   `UNRECOGNIZED_CLEAR_SECONDS` of the turntable playing something AudD
-  keeps failing to recognize.
+  keeps failing to recognize -- so the person looking at the panel can
+  tell "it's listening but can't identify this" apart from "nothing is
+  playing" or "the whole thing crashed," which look identical on a panel
+  that goes to blank either way.
 
 Both are **debounced**, not instant -- the timer starts on the first
-silent/unrecognized poll and only actually clears once it's held past the
-threshold on a later poll. This matters because a normal pause between
-tracks or while flipping a record would otherwise blank-flash the panel
-on every gap, which is both annoying and an unnecessary e-paper refresh
-(these panels visibly flicker on a full refresh, and refreshes aren't
-meant to happen constantly). Same reasoning as the existing 30s debounce
-on the Home Assistant light's off-transition.
+silent/unrecognized poll and only actually acts once it's held past the
+threshold on a later poll, and each is also guarded on `screen_state`
+already matching its target (`"blank"` / `"unrecognized"`) so it doesn't
+re-render the same thing (and re-flicker the panel) on every subsequent
+poll while a streak continues. This matters because a normal pause
+between tracks or while flipping a record would otherwise blank-flash the
+panel on every gap, which is both annoying and an unnecessary e-paper
+refresh (these panels visibly flicker on a full refresh, and refreshes
+aren't meant to happen constantly). Same reasoning as the existing 30s
+debounce on the Home Assistant light's off-transition.
 
 When either debounce fires, `state["last_shown"]` is reset to `None` --
 without that, the same song resuming after a pause would be (wrongly)
-treated as "unchanged" and skipped, leaving the display blank even though
-something is playing again.
+treated as "unchanged" and skipped, leaving the display showing the old
+message/blank even though something is playing again.
+
+`render_message()` in `display.py` shares `_fit_text` with the normal
+song-info layout, but composes a simple full-panel centered message
+(`_compose_message_image`) instead of the three-block title/artist/album
+layout -- there's no art or metadata to lay out for a status message.
 
 ## .tmp_audio cleanup
 
