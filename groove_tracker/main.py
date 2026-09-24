@@ -18,14 +18,14 @@ from .identify import identify_song
 def _initial_state():
     """Tracks what's currently on the display, and how long the turntable
     has been continuously silent or continuously unrecognized, so the
-    display can be cleared after a debounce period (see
+    display can be updated after a debounce period (see
     _maybe_clear_for_silence/_maybe_clear_for_unrecognized) instead of
-    either never clearing (stale info stays up forever) or clearing on
+    either never changing (stale info stays up forever) or changing on
     every brief pause between tracks.
     """
     return {
         "last_shown": None,  # (artist, title) currently on the display, or None
-        "displaying": False,  # whether the display currently shows song info (vs. blank)
+        "screen_state": "blank",  # "blank" | "song" | "unrecognized" -- what's currently shown
         "silence_since": None,  # time.time() when the current silence streak began, or None
         "unrecognized_since": None,  # time.time() when the current "playing but unrecognized" streak began, or None
     }
@@ -71,7 +71,7 @@ def process_once(state=None):
 
         key = (song["artist"], song["title"])
         print(f"Recognized: {song['artist']} — {song['title']}", flush=True)
-        if key == state["last_shown"] and state["displaying"]:
+        if key == state["last_shown"] and state["screen_state"] == "song":
             print("Same as last shown, not re-rendering.", flush=True)
             return state
 
@@ -88,7 +88,7 @@ def process_once(state=None):
 
         print("Display updated.", flush=True)
         state["last_shown"] = key
-        state["displaying"] = True
+        state["screen_state"] = "song"
         return state
     finally:
         # Always clean up the recorded clip, even if something above raised
@@ -107,16 +107,22 @@ def _maybe_clear_for_silence(state):
     flipping a record doesn't blank the screen. `silence_since` marks when
     the current streak began; process_once resets it to None the moment
     audio is present again.
+
+    Guarded on screen_state != "blank" rather than a plain "was something
+    showing" boolean so this also correctly blanks a "Song not
+    recognized" message left up from _maybe_clear_for_unrecognized, once
+    the turntable actually stops -- and, either way, avoids hammering the
+    panel with a repeat Clear() every poll once it's already blank.
     """
     now = time.time()
     if state["silence_since"] is None:
         state["silence_since"] = now
         return state
 
-    if state["displaying"] and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
+    if state["screen_state"] != "blank" and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
         print(f"Silent for {config.SILENCE_CLEAR_SECONDS}s+, clearing display.", flush=True)
         display.clear_display()
-        state["displaying"] = False
+        state["screen_state"] = "blank"
         # Force a fresh render next time, even if the same song resumes --
         # otherwise it'd be (wrongly) treated as "unchanged" and skipped.
         state["last_shown"] = None
@@ -130,16 +136,24 @@ def _maybe_clear_for_unrecognized(state):
     without this, a previously-recognized song's info would stay on
     screen indefinitely once a different, unrecognized track starts,
     making it look like recognition is still working when it isn't.
+
+    Once the debounce period elapses, this renders an explicit "Song not
+    recognized" message rather than just blanking the screen -- so it's
+    clear the turntable is playing and being listened to, just not
+    identified, as opposed to looking identical to genuine silence/idle.
+    Guarded on screen_state != "unrecognized" so this message is rendered
+    once per streak, not re-rendered (and re-flickering the e-paper panel)
+    on every subsequent poll while the streak continues.
     """
     now = time.time()
     if state["unrecognized_since"] is None:
         state["unrecognized_since"] = now
         return state
 
-    if state["displaying"] and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
-        print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, clearing stale display.", flush=True)
-        display.clear_display()
-        state["displaying"] = False
+    if state["screen_state"] != "unrecognized" and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
+        print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, showing 'not recognized' message.", flush=True)
+        display.render_message("Song not recognized")
+        state["screen_state"] = "unrecognized"
         state["last_shown"] = None
 
     return state
