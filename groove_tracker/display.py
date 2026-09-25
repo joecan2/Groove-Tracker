@@ -24,10 +24,35 @@ ART_SIZE = 150  # square album art footprint, in pixels
 MARGIN = 12
 
 
+_warned_missing_font_paths = set()
+
+
 def _load_font(path, size):
+    """Loads a scalable TrueType font at the requested size, falling back
+    to Pillow's built-in bitmap font if the file isn't present.
+
+    That fallback is a trap worth calling out loudly: ImageFont.load_default()
+    ignores the `size` argument entirely and always returns the same tiny
+    fixed-size font, and it also has a very limited glyph set (no "★", for
+    instance -- it renders as a blank box instead). Silently falling back
+    here previously meant every single render used the same tiny font no
+    matter what max_size _fit_text picked, with no error anywhere -- it
+    just looked like "the auto-sizing isn't working" rather than "the
+    DejaVu font files (fonts-dejavu-core) aren't installed." Printing once
+    per missing path means that's now visible in journalctl instead.
+    """
     try:
         return ImageFont.truetype(path, size)
     except OSError:
+        if path not in _warned_missing_font_paths:
+            print(
+                f"WARNING: could not load font '{path}' -- falling back to "
+                "Pillow's tiny built-in bitmap font, which ignores the "
+                "requested size and is missing many glyphs (e.g. '★'). "
+                "Install the DejaVu fonts: sudo apt install fonts-dejavu-core",
+                flush=True,
+            )
+            _warned_missing_font_paths.add(path)
         return ImageFont.load_default()
 
 
