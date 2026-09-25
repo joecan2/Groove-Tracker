@@ -280,17 +280,18 @@ def render_message(text):
 
 
 def clear_display():
-    """Blanks the display -- used when the turntable has been silent (or
-    playing something unrecognized) long enough that whatever's currently
-    shown counts as stale. See main.py's debounce logic for what "long
-    enough" means; this function itself just does the clearing.
+    """Blanks the display entirely (no icon, no text) -- a low-level
+    primitive kept around for a genuinely empty panel. main.py's idle
+    state uses render_idle() instead, for a nicer resting screen; this is
+    no longer called from the debounce logic, but still useful (e.g. if
+    something later wants a truly blank panel, or during development).
     """
     if config.MOCK_MODE:
         os.makedirs(config.MOCK_DISPLAY_OUTPUT_DIR, exist_ok=True)
         blank = Image.new("1", MOCK_DISPLAY_SIZE, 255)
         out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
         blank.save(out_path)
-        print("[mock display] Cleared (idle)", flush=True)
+        print("[mock display] Cleared (blank)", flush=True)
         return
 
     import importlib
@@ -299,4 +300,110 @@ def clear_display():
     epd = epd_module.EPD()
     epd.init()
     epd.Clear()
+    epd.sleep()
+
+
+VINYL_GROOVE_COUNT = 5
+# Icon-only is the default idle screen. Set to a string (e.g. "No record
+# playing") and pass it explicitly to render_idle()/​_compose_idle_image
+# if a caption is ever wanted again -- kept as a named constant here
+# rather than deleted so that option stays a one-line change.
+IDLE_CAPTION = "No record playing"
+
+
+def _draw_vinyl_record(draw, cx, cy, radius):
+    """Draws a simple vinyl record icon centered at (cx, cy): a black
+    disc, a handful of thin concentric groove rings, a punched-out label
+    near the center, and a small spindle hole through the middle of that.
+
+    Pure drawing helper -- takes any ImageDraw and plain numbers, no
+    MOCK_MODE/hardware dependency, so it's safe to unit test by inspecting
+    pixels on an in-memory image, same as the text-layout helpers above.
+    All black/white fills (no grays or dithering) since this is a crisp
+    vector icon, not a photo -- unlike album_art.py's cover art, which
+    dithers because it's downsampling a real photo.
+    """
+    draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=0)
+
+    label_radius = radius * 0.38
+    groove_band = radius - label_radius
+    for i in range(1, VINYL_GROOVE_COUNT + 1):
+        r = label_radius + groove_band * i / (VINYL_GROOVE_COUNT + 1)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=255, width=1)
+
+    draw.ellipse(
+        [cx - label_radius, cy - label_radius, cx + label_radius, cy + label_radius],
+        fill=255,
+    )
+    hole_radius = max(2, radius * 0.045)
+    draw.ellipse(
+        [cx - hole_radius, cy - hole_radius, cx + hole_radius, cy + hole_radius],
+        fill=0,
+    )
+
+
+def _compose_idle_image(width, height, caption=None):
+    """Vinyl record icon centered in the panel, with an optional short
+    caption underneath -- the resting screen shown once the turntable's
+    been silent (or playing something unrecognized) past the debounce
+    (see main.py's _maybe_clear_for_silence/_maybe_clear_for_unrecognized),
+    replacing the old plain-blank/text-message behavior with something
+    that still reads as "this is a record player" at a glance. Icon-only
+    (caption=None) is the default; pass a string (e.g. IDLE_CAPTION) for a
+    caption underneath instead.
+    """
+    image = Image.new("1", (width, height), 255)
+    draw = ImageDraw.Draw(image)
+
+    caption_area_h = 0
+    if caption:
+        caption_area_h = int(height * 0.22)
+
+    icon_area_h = height - caption_area_h
+    radius = int(min(width, icon_area_h) * 0.5) - MARGIN
+    cx = width // 2
+    cy = icon_area_h // 2
+    _draw_vinyl_record(draw, cx, cy, radius)
+
+    if caption:
+        max_width = width - 2 * MARGIN
+        font, lines, line_h = _fit_text(
+            draw, caption, FONT_PATH_REGULAR, max_width, caption_area_h, max_size=32, min_size=14
+        )
+        total_height = line_h * len(lines)
+        y = icon_area_h + max(0, (caption_area_h - total_height) // 2)
+        for line in lines:
+            line_width = draw.textlength(line, font=font)
+            x = MARGIN + max(0, (max_width - line_width) // 2)
+            draw.text((x, y), line, font=font, fill=0)
+            y += line_h
+
+    return image
+
+
+def render_idle(caption=None):
+    """Renders the vinyl-record resting screen -- shown once the turntable
+    has been silent, or playing something unrecognized, long enough that
+    whatever was on screen counts as stale (see main.py's
+    _maybe_clear_for_silence/_maybe_clear_for_unrecognized for the
+    debounce logic that decides when). Icon-only by default; pass a
+    caption string (e.g. IDLE_CAPTION) for a caption underneath instead.
+    """
+    if config.MOCK_MODE:
+        os.makedirs(config.MOCK_DISPLAY_OUTPUT_DIR, exist_ok=True)
+        image = _compose_idle_image(*MOCK_DISPLAY_SIZE, caption=caption)
+        out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
+        image.save(out_path)
+        print("[mock display] Idle (vinyl icon)", flush=True)
+        return
+
+    import importlib
+
+    epd_module = importlib.import_module(f"waveshare_epd.{config.DISPLAY_MODEL}")
+    epd = epd_module.EPD()
+    epd.init()
+    epd.Clear()
+
+    image = _compose_idle_image(epd.width, epd.height, caption=caption)
+    epd.display(epd.getbuffer(image))
     epd.sleep()

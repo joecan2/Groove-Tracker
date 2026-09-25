@@ -25,7 +25,10 @@ def _initial_state():
     """
     return {
         "last_shown": None,  # (artist, title) currently on the display, or None
-        "screen_state": "blank",  # "blank" | "song" | "unrecognized" -- what's currently shown
+        "screen_state": "idle",  # "idle" | "song" -- what's currently shown. Both
+        # silence and "playing but unrecognized" render the same idle vinyl icon
+        # (see _maybe_clear_for_silence/_maybe_clear_for_unrecognized), so there's
+        # no separate visual state for "unrecognized" -- just a separate timer.
         "silence_since": None,  # time.time() when the current silence streak began, or None
         "unrecognized_since": None,  # time.time() when the current "playing but unrecognized" streak began, or None
     }
@@ -102,27 +105,28 @@ def process_once(state=None):
 
 
 def _maybe_clear_for_silence(state):
-    """Clears the display after SILENCE_CLEAR_SECONDS of *continuous*
-    silence -- not immediately, so a normal pause between tracks or while
-    flipping a record doesn't blank the screen. `silence_since` marks when
-    the current streak began; process_once resets it to None the moment
-    audio is present again.
+    """Shows the idle vinyl-icon screen after SILENCE_CLEAR_SECONDS of
+    *continuous* silence -- not immediately, so a normal pause between
+    tracks or while flipping a record doesn't switch the screen on every
+    gap. `silence_since` marks when the current streak began; process_once
+    resets it to None the moment audio is present again.
 
-    Guarded on screen_state != "blank" rather than a plain "was something
-    showing" boolean so this also correctly blanks a "Song not
-    recognized" message left up from _maybe_clear_for_unrecognized, once
-    the turntable actually stops -- and, either way, avoids hammering the
-    panel with a repeat Clear() every poll once it's already blank.
+    Guarded on screen_state != "idle" rather than a plain "was something
+    showing" boolean so this also correctly replaces stale song info --
+    and, either way, avoids hammering the panel with a repeat render every
+    poll once it's already idle (which also covers the case where
+    _maybe_clear_for_unrecognized got there first: same "idle" state,
+    same icon, so this is a no-op).
     """
     now = time.time()
     if state["silence_since"] is None:
         state["silence_since"] = now
         return state
 
-    if state["screen_state"] != "blank" and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
-        print(f"Silent for {config.SILENCE_CLEAR_SECONDS}s+, clearing display.", flush=True)
-        display.clear_display()
-        state["screen_state"] = "blank"
+    if state["screen_state"] != "idle" and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
+        print(f"Silent for {config.SILENCE_CLEAR_SECONDS}s+, showing idle screen.", flush=True)
+        display.render_idle()
+        state["screen_state"] = "idle"
         # Force a fresh render next time, even if the same song resumes --
         # otherwise it'd be (wrongly) treated as "unchanged" and skipped.
         state["last_shown"] = None
@@ -137,23 +141,24 @@ def _maybe_clear_for_unrecognized(state):
     screen indefinitely once a different, unrecognized track starts,
     making it look like recognition is still working when it isn't.
 
-    Once the debounce period elapses, this renders an explicit "Song not
-    recognized" message rather than just blanking the screen -- so it's
-    clear the turntable is playing and being listened to, just not
-    identified, as opposed to looking identical to genuine silence/idle.
-    Guarded on screen_state != "unrecognized" so this message is rendered
-    once per streak, not re-rendered (and re-flickering the e-paper panel)
-    on every subsequent poll while the streak continues.
+    Shows the same idle vinyl-icon screen as _maybe_clear_for_silence --
+    the panel doesn't try to visually distinguish "nothing's playing" from
+    "something's playing but AudD can't identify it," it just clears stale
+    song info back to the resting icon either way (an earlier version
+    showed a distinct "Song not recognized" text message here instead).
+    Guarded on screen_state != "idle" so this doesn't re-render an
+    identical image (and re-flicker the panel) on every subsequent poll
+    while the streak continues.
     """
     now = time.time()
     if state["unrecognized_since"] is None:
         state["unrecognized_since"] = now
         return state
 
-    if state["screen_state"] != "unrecognized" and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
-        print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, showing 'not recognized' message.", flush=True)
-        display.render_message("Song not recognized")
-        state["screen_state"] = "unrecognized"
+    if state["screen_state"] != "idle" and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
+        print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, showing idle screen.", flush=True)
+        display.render_idle()
+        state["screen_state"] = "idle"
         state["last_shown"] = None
 
     return state
@@ -163,6 +168,13 @@ def main_loop(once=False):
     refresh_cache()
     last_maintenance = time.time()
     state = _initial_state()
+
+    # E-paper panels hold whatever was last drawn even across a reboot/power
+    # loss, so without this the display could show a stale render from
+    # before the service (re)started, indefinitely, until the next song is
+    # recognized. Showing the idle screen up front means it always starts
+    # from a known, on-theme state.
+    display.render_idle()
 
     while True:
         try:
