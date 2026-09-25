@@ -73,7 +73,8 @@ PYEOF
 echo "--- Step 1/8: System packages ---"
 sudo apt update
 sudo apt install -y python3-pip python3-venv git \
-    libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1 libfreetype6
+    libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1 libfreetype6 \
+    fonts-dejavu-core
 echo
 
 echo "--- Step 2/8: Enabling SPI ---"
