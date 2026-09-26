@@ -55,8 +55,21 @@ set_env_var() {
     python3 - "$key" "$value" "$file" <<'PYEOF'
 import sys
 key, value, path = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as f:
-    lines = f.readlines()
+# A .env edited/saved on Windows (e.g. via a Samba-mounted drive, opened in
+# Notepad's default "ANSI" save option) can end up saved as Windows-1252
+# instead of UTF-8 -- same issue config.py's load_dotenv() already retries
+# for (see its docstring). Retry once assuming that encoding rather than
+# crashing this whole install step; every value here is plain text either
+# way, so this is safe even if the file turns out to already be UTF-8 with
+# no non-ASCII characters at all. Re-saving as UTF-8 below also fixes the
+# file for next time, instead of leaving it broken to hit again on the
+# next set_env_var call or the next `install.sh` re-run.
+try:
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()
+except UnicodeDecodeError:
+    with open(path, encoding="cp1252") as f:
+        lines = f.readlines()
 found = False
 for i, line in enumerate(lines):
     if line.startswith(key + "="):
@@ -65,7 +78,7 @@ for i, line in enumerate(lines):
         break
 if not found:
     lines.append(f"{key}={value}\n")
-with open(path, "w") as f:
+with open(path, "w", encoding="utf-8") as f:
     f.writelines(lines)
 PYEOF
 }
