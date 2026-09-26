@@ -114,27 +114,78 @@ indefinitely after the turntable stops, or after a different,
 unrecognized track starts playing (looking like recognition is still
 working when it's actually just stale). `main.py` handles both, via a
 small state dict threaded through `process_once`/`main_loop` (see
-`_initial_state`) instead of the old bare `last_shown` tuple:
+`_initial_state`) instead of the old bare `last_shown` tuple. The dict's
+`screen_state` is just `"idle"` / `"song"` -- silence and "playing but
+unrecognized" both resolve to the same `"idle"` visual (the vinyl icon,
+see below), so there's no separate screen state for them, just separate
+timers:
 
-- `_maybe_clear_for_silence` clears the display after
-  `SILENCE_CLEAR_SECONDS` of *continuous* silence.
-- `_maybe_clear_for_unrecognized` does the same after
+- `_maybe_clear_for_silence` shows the idle screen (`display.render_idle()`)
+  after `SILENCE_CLEAR_SECONDS` of *continuous* silence.
+- `_maybe_clear_for_unrecognized` shows the same idle screen after
   `UNRECOGNIZED_CLEAR_SECONDS` of the turntable playing something AudD
-  keeps failing to recognize.
+  keeps failing to recognize. An earlier version showed a distinct "Song
+  not recognized" text message here instead (`display.render_message()`,
+  still defined and still useful for other status messages, just no
+  longer wired into this path) -- the panel doesn't try to visually
+  distinguish "nothing's playing" from "something's playing but
+  unidentified," it just clears stale song info back to the resting icon
+  either way.
 
 Both are **debounced**, not instant -- the timer starts on the first
-silent/unrecognized poll and only actually clears once it's held past the
-threshold on a later poll. This matters because a normal pause between
-tracks or while flipping a record would otherwise blank-flash the panel
-on every gap, which is both annoying and an unnecessary e-paper refresh
-(these panels visibly flicker on a full refresh, and refreshes aren't
-meant to happen constantly). Same reasoning as the existing 30s debounce
-on the Home Assistant light's off-transition.
+silent/unrecognized poll and only actually acts once it's held past the
+threshold on a later poll, and each is also guarded on `screen_state !=
+"idle"` so neither re-renders an identical image (and re-flickers the
+panel) on every subsequent poll while a streak continues -- including
+when the *other* debounce already got there first (e.g. unrecognized
+fires and sets `"idle"`; if the turntable then goes silent too, silence's
+own guard sees it's already `"idle"` and does nothing further). This
+matters because a normal pause between tracks or while flipping a record
+would otherwise flip the panel on every gap, which is both annoying and
+an unnecessary e-paper refresh (these panels visibly flicker on a full
+refresh, and refreshes aren't meant to happen constantly). Same reasoning
+as the existing 30s debounce on the Home Assistant light's off-transition.
 
 When either debounce fires, `state["last_shown"]` is reset to `None` --
 without that, the same song resuming after a pause would be (wrongly)
-treated as "unchanged" and skipped, leaving the display blank even though
-something is playing again.
+treated as "unchanged" and skipped, leaving the display showing the old
+idle screen even though something is playing again.
+
+## Idle screen (vinyl icon)
+
+`render_idle()` in `display.py` draws a simple vector vinyl-record icon
+(`_draw_vinyl_record` -- a black disc, a few concentric groove rings, a
+punched-out label, and a spindle hole, all pure black/white, no dithering
+since it's a vector icon rather than a photo, and no font glyphs either --
+sidesteps the missing-glyph risk that bit the "★" character before
+`fonts-dejavu-core` was installed). Icon-only is the default
+(`_compose_idle_image`'s `caption` param defaults to `None`); pass a
+string (e.g. the `IDLE_CAPTION` constant, `"No record playing"`) for a
+caption underneath instead, if wanted again later.
+
+This is what `_maybe_clear_for_silence`/`_maybe_clear_for_unrecognized`
+show once their respective debounce fires, replacing the old plain-blank
+behavior -- and `main_loop()` also renders it once at startup, since
+e-paper panels hold whatever was last drawn across a reboot/power loss,
+so without that the display could keep showing a stale pre-restart render
+indefinitely until the next song is recognized.
+
+A real animation (e.g. spinning the icon) isn't practical on this
+hardware and was deliberately not built: a full e-paper refresh takes
+roughly 1-2 seconds and visibly flashes black before settling, so
+anything resembling motion would just be individually-flashing static
+frames spaced apart in time, not smooth animation -- plus far more
+frequent panel refreshes than today's "render once per state change."
+
+`clear_display()` (a genuinely blank white panel, no icon) still exists
+as a low-level primitive but isn't called from the debounce logic anymore
+-- kept around in case something later wants a truly blank screen.
+
+`render_message()` in `display.py` shares `_fit_text` with the normal
+song-info layout, composing a simple full-panel centered message
+(`_compose_message_image`) instead of the three-block title/artist/album
+layout. No longer used by the debounce logic (see above), but kept as a
+general-purpose status message renderer.
 
 ## .tmp_audio cleanup
 
