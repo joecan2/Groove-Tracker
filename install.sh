@@ -70,13 +70,13 @@ with open(path, "w") as f:
 PYEOF
 }
 
-echo "--- Step 1/8: System packages ---"
+echo "--- Step 1/9: System packages ---"
 sudo apt update
 sudo apt install -y python3-pip python3-venv git \
     libopenjp2-7 libopenblas-dev portaudio19-dev libsndfile1 libfreetype6
 echo
 
-echo "--- Step 2/8: Enabling SPI ---"
+echo "--- Step 2/9: Enabling SPI ---"
 if command -v raspi-config >/dev/null 2>&1; then
     sudo raspi-config nonint do_spi 0
     echo "SPI enabled."
@@ -85,7 +85,7 @@ else
 fi
 echo
 
-echo "--- Step 3/8: Waveshare e-Paper driver ---"
+echo "--- Step 3/9: Waveshare e-Paper driver ---"
 if [ -d "waveshare_epd" ]; then
     echo "waveshare_epd/ already exists at the project root — skipping."
 else
@@ -106,7 +106,7 @@ else
 fi
 echo
 
-echo "--- Step 4/8: Python virtual environment ---"
+echo "--- Step 4/9: Python virtual environment ---"
 if [ -d "venv" ]; then
     echo "venv/ already exists — skipping creation."
 else
@@ -121,7 +121,7 @@ pip install -r requirements.txt
 deactivate
 echo
 
-echo "--- Step 5/8: Environment file ---"
+echo "--- Step 5/9: Environment file ---"
 if [ -f ".env" ]; then
     echo ".env already exists — keeping your existing values, only filling in what you enter next."
 else
@@ -130,7 +130,7 @@ else
 fi
 echo
 
-echo "--- Step 6/8: Configuration ---"
+echo "--- Step 6/9: Configuration ---"
 echo "Enter values now, or press Enter to skip anything you don't have yet"
 echo "-- you can always fill it in later by editing .env directly."
 echo
@@ -198,7 +198,7 @@ elif [ -z "$current" ]; then
 fi
 echo
 
-echo "--- Step 7/8: Samba file share ---"
+echo "--- Step 7/9: Samba file share ---"
 sudo apt install -y samba
 SMB_CONF="/etc/samba/smb.conf"
 if sudo grep -q "^\[groove-tracker\]" "$SMB_CONF" 2>/dev/null; then
@@ -232,7 +232,7 @@ EOF
 fi
 echo
 
-echo "--- Step 8/8: systemd service ---"
+echo "--- Step 8/9: systemd service ---"
 SERVICE_FILE="/etc/systemd/system/groove-tracker.service"
 sed -e "s|__USER__|$CURRENT_USER|g" -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
     "$PROJECT_ROOT/systemd/groove-tracker.service" | sudo tee "$SERVICE_FILE" > /dev/null
@@ -240,6 +240,71 @@ sudo systemctl daemon-reload
 sudo systemctl enable groove-tracker.service
 echo "Installed and enabled groove-tracker.service (will start automatically on boot)."
 echo "Not starting it yet -- see the checklist below first."
+echo
+
+echo "--- Step 9/9: Web UI ---"
+echo "Local dashboard for starting/stopping the service, viewing logs/status,"
+echo "and editing .env from a browser -- see docs/SETUP.md 'Web UI' for details."
+read -rp "Set up the web UI now? [Y/n]: " enable_webui
+if [[ ! "$enable_webui" =~ ^[Nn]$ ]]; then
+    # WEBUI_SECRET_KEY signs the login session cookie -- generated once and
+    # left alone from then on, since changing it invalidates every existing
+    # session. Only generated if missing, so re-running install.sh doesn't
+    # silently log everyone out.
+    current_key=$(get_env_var "WEBUI_SECRET_KEY" ".env")
+    if [ -z "$current_key" ]; then
+        new_key=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        set_env_var "WEBUI_SECRET_KEY" "$new_key" ".env"
+        echo "Generated WEBUI_SECRET_KEY."
+    fi
+
+    current_pw=$(get_env_var "WEBUI_PASSWORD" ".env")
+    if [ -n "$current_pw" ]; then
+        echo "Web UI password: already set (press Enter to keep it)."
+    else
+        echo "Web UI password: not set -- the dashboard will have NO login until you set one."
+    fi
+    read -rsp "Web UI password [skip]: " webui_pw_input
+    echo
+    if [ -n "$webui_pw_input" ]; then
+        set_env_var "WEBUI_PASSWORD" "$webui_pw_input" ".env"
+        echo "Saved."
+    elif [ -z "$current_pw" ]; then
+        STILL_NEEDED+=("Set WEBUI_PASSWORD in .env, or the dashboard stays open with no login")
+    fi
+    echo
+
+    # Lets the (unprivileged) web UI user start/stop/restart just this one
+    # service, without running the Flask process itself as root. Validated
+    # with visudo -c before being placed where sudo will actually read it,
+    # so a typo here can't ever break sudo system-wide.
+    SUDOERS_FILE="/etc/sudoers.d/groove-tracker-web"
+    SUDOERS_TMP="$(mktemp)"
+    sed "s|__USER__|$CURRENT_USER|g" "$PROJECT_ROOT/systemd/groove-tracker-web.sudoers" > "$SUDOERS_TMP"
+    if sudo visudo -c -f "$SUDOERS_TMP" >/dev/null 2>&1; then
+        sudo install -m 0440 "$SUDOERS_TMP" "$SUDOERS_FILE"
+        echo "Installed $SUDOERS_FILE (passwordless systemctl start/stop/restart for groove-tracker.service only)."
+    else
+        echo "WARNING: generated sudoers file failed validation -- skipping. Service start/stop/restart from the web UI won't work until this is fixed by hand."
+    fi
+    rm -f "$SUDOERS_TMP"
+
+    # Lets the web UI's unprivileged user read the system journal (for the
+    # Logs page) without sudo -- the default 'pi' user on Raspberry Pi OS
+    # usually already has this, but adding it again is a harmless no-op.
+    sudo usermod -aG systemd-journal "$CURRENT_USER"
+
+    WEB_SERVICE_FILE="/etc/systemd/system/groove-tracker-web.service"
+    sed -e "s|__USER__|$CURRENT_USER|g" -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
+        "$PROJECT_ROOT/systemd/groove-tracker-web.service" | sudo tee "$WEB_SERVICE_FILE" > /dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now groove-tracker-web.service
+    echo "Installed, enabled, and started groove-tracker-web.service."
+    webui_port="$(get_env_var "WEBUI_PORT" ".env")"
+    echo "Dashboard: http://$(hostname).local:${webui_port:-8420}/"
+else
+    echo "Skipping web UI setup -- re-run install.sh later to add it."
+fi
 echo
 
 echo "=== Setup script complete ==="

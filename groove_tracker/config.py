@@ -9,7 +9,18 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    load_dotenv()
+except UnicodeDecodeError:
+    # A .env file edited/saved on Windows (e.g. via Notepad's default
+    # "ANSI" save option) can end up saved as Windows-1252 instead of
+    # UTF-8. This shows up as a decode error on bytes like 0x97 -- an em
+    # dash (-) in that encoding, easy to pick up by copy-pasting from
+    # .env.example's comments. Retry once assuming that encoding rather
+    # than crashing the whole service outright; every value dotenv reads
+    # is treated as plain text either way, so this is safe even if the
+    # file turns out to be UTF-8 with no non-ASCII characters at all.
+    load_dotenv(encoding="cp1252")
 
 
 def _bool_env(name, default=False):
@@ -129,3 +140,22 @@ UNRECOGNIZED_CLEAR_SECONDS = int(os.getenv("UNRECOGNIZED_CLEAR_SECONDS", "60"))
 HA_URL = os.getenv("HA_URL", "")
 HA_TOKEN = os.getenv("HA_TOKEN", "")
 HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID", "binary_sensor.groove_tracker_playing")
+
+# --- Web UI ---
+# Optional local dashboard (see groove_tracker/webui/) for controlling the
+# service, viewing logs/status, and editing .env from a browser instead of
+# SSH. install.sh sets WEBUI_PASSWORD and WEBUI_SECRET_KEY for you; leaving
+# WEBUI_PASSWORD blank disables login entirely, so only set this up on a
+# trusted LAN.
+WEBUI_PORT = int(os.getenv("WEBUI_PORT", "8420"))
+WEBUI_PASSWORD = os.getenv("WEBUI_PASSWORD", "")
+WEBUI_SECRET_KEY = os.getenv("WEBUI_SECRET_KEY", "")
+
+# Where main.py writes a small JSON snapshot of pipeline state
+# (playing/last recognized song/errors), and where display.py always saves
+# a PNG copy of whatever's currently on the display (real hardware or
+# mock) -- both read by the web UI, which runs as a separate process and
+# so can't just read these out of main_loop's in-memory state directly.
+STATE_DIR = os.path.join(os.path.dirname(__file__), "..", ".state")
+STATUS_PATH = os.path.join(STATE_DIR, "status.json")
+DISPLAY_PREVIEW_PATH = os.path.join(STATE_DIR, "now_playing.png")

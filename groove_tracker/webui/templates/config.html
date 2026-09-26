@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Config — Groove Tracker{% endblock %}
+{% block content %}
+
+{% if saved %}<div class="banner ok">Saved.</div>{% endif %}
+<div class="banner warn">
+  Changes to most settings take effect only after <code>groove-tracker.service</code> restarts — check "restart after saving" below, or restart manually from the Dashboard.
+  <br>Changes under <strong>Web UI</strong> (port/password) need this dashboard's own service restarted instead: <code>sudo systemctl restart groove-tracker-web</code> over SSH — it can't safely restart itself mid-request.
+</div>
+
+<form method="post">
+  {% for group_name, fields in groups %}
+    <div class="card">
+      <h2>{{ group_name }}</h2>
+      {% for f in fields %}
+        <div class="field">
+          <label for="{{ f.key }}">{{ f.label }}</label>
+          {% if f.type == "bool" %}
+            <input type="checkbox" id="{{ f.key }}" name="{{ f.key }}" {{ "checked" if f.value|lower in ("true", "1", "yes", "on") else "" }}>
+          {% elif f.type == "secret" %}
+            <input type="password" id="{{ f.key }}" name="{{ f.key }}" value=""
+                   placeholder="{{ '(set — leave blank to keep)' if f.is_set else '(not set)' }}" autocomplete="new-password">
+          {% elif f.type == "number" %}
+            <input type="number" step="any" id="{{ f.key }}" name="{{ f.key }}" value="{{ f.value }}">
+          {% else %}
+            <input type="text" id="{{ f.key }}" name="{{ f.key }}" value="{{ f.value }}">
+          {% endif %}
+          {% if f.help %}<p class="muted small">{{ f.help }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <div class="card">
+    <label class="inline-check"><input type="checkbox" name="restart_after_save"> Restart groove-tracker.service after saving</label>
+    <button type="submit">Save</button>
+  </div>
+</form>
+{% endblock %}

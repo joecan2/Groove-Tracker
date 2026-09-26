@@ -40,14 +40,28 @@ groove_tracker/
 ├── collection_match.py   # matches recognized tracks against your DVinyl collection
 ├── album_art.py           # fetches/crops album art for the display
 ├── display.py             # renders to the Waveshare e-paper panel (auto-sized text + art)
-└── main.py                 # the loop tying it all together, incl. debounced display clearing
+├── status.py               # writes/reads the JSON status snapshot the web UI reads
+├── main.py                 # the loop tying it all together, incl. debounced display clearing
+└── webui/                   # optional browser dashboard -- see "Web UI" below
 waveshare_epd/               # vendored driver lib, project root (not in git — see docs/SETUP.md)
 tests/                       # pytest suite, runs without real hardware
 docs/SETUP.md               # complete wiring + install + troubleshooting guide
-install.sh                   # one-command setup: packages, SPI, driver, venv, Samba, systemd
+install.sh                   # one-command setup: packages, SPI, driver, venv, Samba, systemd, web UI
 bootstrap.sh                 # clones this repo + runs install.sh, for a fresh Pi
-systemd/groove-tracker.service  # template, filled in by install.sh
+systemd/groove-tracker.service      # template, filled in by install.sh
+systemd/groove-tracker-web.service  # template for the web UI's service
 ```
+
+## Web UI
+
+A browser dashboard for managing the service without SSH — status, a live
+copy of what's on the e-paper panel, Start/Stop/Restart, log tailing, and
+a form-based `.env` editor. `install.sh` sets it up (its own systemd
+service, plus a narrowly-scoped sudoers rule so it can control
+`groove-tracker.service` without running as root). See
+[`docs/SETUP.md`](docs/SETUP.md#web-ui) for what it looks like, how it's
+hosted, and its security model (LAN-only, single shared password, no
+HTTPS by default).
 
 ## Setup
 

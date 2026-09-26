@@ -20,5 +20,8 @@ mock_output/
 # Temp audio recordings (see audio_capture.py TEMP_AUDIO_DIR)
 .tmp_audio/
 
+# Web UI status snapshot + display preview (see status.py/display.py)
+.state/
+
 # OS cruft
 .DS_Store

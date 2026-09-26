@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Logs — Groove Tracker{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Logs <span class="muted small">(auto-refreshes every 3s)</span></h2>
+  <label class="inline-check"><input type="checkbox" id="follow" checked> Follow</label>
+  <pre id="log-box">Loading…</pre>
+</div>
+
+<script>
+const box = document.getElementById("log-box");
+const follow = document.getElementById("follow");
+
+async function refresh() {
+  try {
+    const res = await fetch("{{ url_for('api_logs') }}?lines=300");
+    if (!res.ok) return;
+    const data = await res.json();
+    box.textContent = data.lines.join("\n");
+    if (follow.checked) box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    // transient poll failure, next tick will retry
+  }
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
+{% endblock %}

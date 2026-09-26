@@ -234,6 +234,50 @@ configured field names.
 
 `home_assistant.py` reports play/pause state to a Home Assistant instance via a directly-set `binary_sensor.groove_tracker_playing` entity (not backed by a real integration — this is the standard lightweight pattern for external devices, see the module's docstring). The actual light control lives in a Home Assistant automation (`automation.groove_tracker_now_playing_light`, created via the HA MCP tools, not in this repo) watching that entity and controlling `light.now_playing_light` with a 30s debounce on the off-transition. If asked to modify the light-control behavior, that means editing the HA automation, not this codebase — this repo only owns reporting the playing state.
 
+## Web UI
+
+`groove_tracker/webui/` is a Flask dashboard that runs as its own systemd
+service (`groove-tracker-web.service`), separate from the main
+`groove-tracker.service` process (`main.py`'s loop). They communicate only
+through the filesystem, never in-process:
+
+- `status.py`'s `write_status()`/`read_status()` pass a small JSON
+  snapshot (`.state/status.json`) of what `main.py` last saw -- playing/
+  silent, last recognized song, owned, last error.
+- `display.py`'s `_save_preview()` always writes a PNG copy of whatever
+  was just rendered to `.state/now_playing.png`, in both `MOCK_MODE` and
+  on real hardware -- this is what lets the dashboard show "what's on the
+  panel right now" even when running on the actual Pi.
+- `webui/service_control.py` shells out to `systemctl`/`journalctl`
+  (`sudo -n systemctl start/stop/restart groove-tracker.service`, scoped
+  narrowly via `/etc/sudoers.d/groove-tracker-web` -- see install.sh step
+  9/9) rather than importing `main.py` directly, so the dashboard keeps
+  working even if the main service is stopped or crashed.
+- `webui/updater.py` backs the dashboard's "Pull latest & restart" button:
+  `git pull --ff-only` (never resets/force-anything -- fails loudly on
+  diverged history instead), then `pip install -r requirements.txt` and a
+  restart of both services, but only if the pull actually brought in new
+  commits. Restarting `groove-tracker-web.service` itself is done via
+  `service_control.restart_self_delayed()` -- a detached, sleep-then-
+  restart subprocess, since a synchronous restart would kill the very
+  process handling that request before the response reached the browser.
+- `webui/env_editor.py` edits `.env` in place (preserves comments/order,
+  same idempotent-rewrite approach as `install.sh`'s `set_env_var`).
+  Secret fields (`AUDD_API_TOKEN`, `MONGO_URI`, `HA_TOKEN`,
+  `WEBUI_PASSWORD`) are never echoed back into rendered HTML -- the
+  config page always renders `value=""` for these and only overwrites a
+  secret if the submitted field was non-blank.
+
+**Testability:** `env_editor`'s text-rewriting (`parse_env_text`/
+`apply_updates`) and all of `status.py` are pure/plain-I/O functions with
+no `MOCK_MODE` branch, following the same pattern as the rest of this
+project -- see `tests/test_webui_env_editor.py` and `tests/test_status.py`.
+`service_control.py` itself isn't unit tested (it's a thin subprocess
+wrapper); it degrades to a reported "unavailable" status rather than
+raising when `systemctl`/`journalctl`/`sudo` aren't on PATH at all (e.g.
+this sandbox, or a non-Linux dev machine), so it's safe to import and call
+here even though the commands themselves won't do anything.
+
 ## Known open items
 
 - `AUDD_API_TOKEN` and `MONGO_URI` in the user's real `.env` are

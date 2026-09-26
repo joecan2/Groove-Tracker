@@ -9,7 +9,7 @@ Or for a single one-shot pass (handy for testing): main_loop(once=True)
 import os
 import time
 
-from . import config, display, home_assistant
+from . import config, display, home_assistant, status
 from .audio_capture import cleanup_stale_clips, is_signal_present, record_clip
 from .collection_match import find_owned_release, refresh_cache
 from .identify import identify_song
@@ -28,7 +28,21 @@ def _initial_state():
         "displaying": False,  # whether the display currently shows song info (vs. blank)
         "silence_since": None,  # time.time() when the current silence streak began, or None
         "unrecognized_since": None,  # time.time() when the current "playing but unrecognized" streak began, or None
+        "last_album": None,  # album shown alongside last_shown, kept only for status.write_status
+        "last_owned": None,  # owned bool shown alongside last_shown, kept only for status.write_status
     }
+
+
+def _status_song(state):
+    """Builds the {artist, title, album} dict status.write_status() wants,
+    from whatever's currently on the display per `state` -- kept separate
+    from the display-clearing state machine itself (last_shown/displaying)
+    since only the web UI's status snapshot needs album/owned detail.
+    """
+    if not state["displaying"] or not state["last_shown"]:
+        return None
+    artist, title = state["last_shown"]
+    return {"artist": artist, "title": title, "album": state["last_album"]}
 
 
 def process_once(state=None):
@@ -54,7 +68,9 @@ def process_once(state=None):
 
         if not playing:
             state["unrecognized_since"] = None
-            return _maybe_clear_for_silence(state)
+            state = _maybe_clear_for_silence(state)
+            status.write_status(playing=False, song=_status_song(state), owned=state["last_owned"])
+            return state
 
         # Something is playing -- any silence streak is over.
         state["silence_since"] = None
@@ -64,7 +80,9 @@ def process_once(state=None):
 
         if not song:
             print("No song recognized this pass.", flush=True)
-            return _maybe_clear_for_unrecognized(state)
+            state = _maybe_clear_for_unrecognized(state)
+            status.write_status(playing=True, song=_status_song(state), owned=state["last_owned"])
+            return state
 
         # A song was recognized -- any unrecognized streak is over.
         state["unrecognized_since"] = None
@@ -73,6 +91,7 @@ def process_once(state=None):
         print(f"Recognized: {song['artist']} — {song['title']}", flush=True)
         if key == state["last_shown"] and state["displaying"]:
             print("Same as last shown, not re-rendering.", flush=True)
+            status.write_status(playing=True, song=_status_song(state), owned=state["last_owned"])
             return state
 
         print("Checking DVinyl collection...", flush=True)
@@ -83,12 +102,16 @@ def process_once(state=None):
             print(f"Owned release found: {album} — rendering to display...", flush=True)
             display.render_now_playing(song["artist"], song["title"], album, owned=True, art_url=art_url)
         else:
-            print(f"Not in collection, using AudD's album: {song['album']} — rendering to display...", flush=True)
-            display.render_now_playing(song["artist"], song["title"], song["album"], owned=False, art_url=art_url)
+            album = song["album"]
+            print(f"Not in collection, using AudD's album: {album} — rendering to display...", flush=True)
+            display.render_now_playing(song["artist"], song["title"], album, owned=False, art_url=art_url)
 
         print("Display updated.", flush=True)
         state["last_shown"] = key
         state["displaying"] = True
+        state["last_album"] = album
+        state["last_owned"] = bool(owned_release)
+        status.write_status(playing=True, song=_status_song(state), owned=state["last_owned"])
         return state
     finally:
         # Always clean up the recorded clip, even if something above raised
@@ -167,6 +190,10 @@ def main_loop(once=False):
 
         except Exception as e:
             print(f"Error in main loop: {e}")
+            try:
+                status.write_status(playing=state.get("displaying"), song=_status_song(state), owned=state.get("last_owned"), error=str(e))
+            except Exception:
+                pass  # status.json is diagnostic only -- never let it mask the real error above
 
         if once:
             return

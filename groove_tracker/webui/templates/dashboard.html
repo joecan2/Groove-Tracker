@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Groove Tracker{% endblock %}
+{% block content %}
+
+{% if not password_configured %}
+  <div class="banner warn">No WEBUI_PASSWORD set — this dashboard has no login. Fine on a fully trusted LAN only; set one in <a href="{{ url_for('config_page') }}">Config</a> otherwise.</div>
+{% endif %}
+{% if flash %}
+  <div class="banner {{ 'ok' if flash == 'ok' else 'error' }}"><pre class="banner-msg">{{ flash_msg or (flash == 'ok' and 'Done.') }}</pre></div>
+{% endif %}
+
+<section class="grid">
+  <div class="card">
+    <h2>Service</h2>
+    <p class="service-status">
+      <span id="service-badge" class="badge {{ service_status }}">{{ service_status }}</span>
+    </p>
+    <form method="post" action="{{ url_for('service_action', action='start') }}" class="inline-form">
+      <button type="submit">Start</button>
+    </form>
+    <form method="post" action="{{ url_for('service_action', action='stop') }}" class="inline-form">
+      <button type="submit" class="danger">Stop</button>
+    </form>
+    <form method="post" action="{{ url_for('service_action', action='restart') }}" class="inline-form">
+      <button type="submit">Restart</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Now playing</h2>
+    <div id="now-playing" data-empty="{{ 'false' if status.title else 'true' }}">
+      <p class="title">{{ status.title or "" }}</p>
+      <p class="artist">{{ status.artist or "" }}</p>
+      <p class="album">{{ status.album or "" }}<span class="owned">{{ " ★ in your collection" if status.owned else "" }}</span></p>
+      <p class="muted" data-role="empty-msg">Nothing recognized yet.</p>
+      <p class="muted small">
+        <span data-role="playing-state">{% if status.playing is not none %}Turntable: {{ "playing" if status.playing else "silent" }} ·{% endif %}</span>
+        <span id="updated-ago">{{ status.updated_at or "never updated" }}</span>
+      </p>
+      <p class="error small" data-role="error-msg">{{ status.error or "" }}</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Display preview</h2>
+    {% if preview_exists %}
+      <img id="preview-img" class="preview" src="{{ url_for('preview') }}" alt="Current display contents">
+    {% else %}
+      <p class="muted">No render yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Update</h2>
+    <p class="muted small">Pulls the latest commits from GitHub (fast-forward only), reinstalls dependencies if anything changed, then restarts the service(s).</p>
+    <form method="post" action="{{ url_for('update') }}" class="inline-form"
+          onsubmit="return confirm('Pull the latest code from GitHub and restart the affected service(s)?');">
+      <button type="submit" id="update-btn">Pull latest &amp; restart</button>
+    </form>
+  </div>
+</section>
+
+<script>
+function timeAgo(epochSeconds) {
+  if (!epochSeconds) return "never updated";
+  const secs = Math.max(0, Math.round(Date.now() / 1000 - epochSeconds));
+  if (secs < 60) return `updated ${secs}s ago`;
+  if (secs < 3600) return `updated ${Math.round(secs / 60)}m ago`;
+  return `updated ${Math.round(secs / 3600)}h ago`;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("{{ url_for('api_status') }}");
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const badge = document.getElementById("service-badge");
+    badge.textContent = data.service_status;
+    badge.className = "badge " + data.service_status;
+
+    const card = document.getElementById("now-playing");
+    const hasSong = !!data.title;
+    card.dataset.empty = hasSong ? "false" : "true";
+    card.querySelector(".title").textContent = data.title || "";
+    card.querySelector(".artist").textContent = data.artist || "";
+    card.querySelector(".album").textContent = data.album || "";
+    card.querySelector(".owned").textContent = data.owned ? " ★ in your collection" : "";
+    card.querySelector('[data-role="playing-state"]').textContent =
+      data.playing === null ? "" : `Turntable: ${data.playing ? "playing" : "silent"} ·`;
+    card.querySelector('[data-role="error-msg"]').textContent = data.error || "";
+    document.getElementById("updated-ago").textContent = timeAgo(data.updated_at);
+
+    const img = document.getElementById("preview-img");
+    if (img) img.src = "{{ url_for('preview') }}?t=" + Date.now();
+  } catch (e) {
+    // A blip in the poll shouldn't spam the console every 5s.
+  }
+}
+setInterval(refresh, 5000);
+</script>
+{% endblock %}

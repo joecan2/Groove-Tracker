@@ -1,0 +1,25 @@
+# Template — install.sh substitutes __USER__/__PROJECT_ROOT__ and installs
+# the result to /etc/systemd/system/groove-tracker-web.service. Don't
+# enable this file directly; run install.sh instead.
+#
+# Runs as the same unprivileged user as groove-tracker.service, never as
+# root -- service control (start/stop/restart) is granted narrowly via the
+# sudoers drop-in install.sh writes to /etc/sudoers.d/groove-tracker-web,
+# not by running this process as root. See docs/SETUP.md's "Web UI"
+# section.
+[Unit]
+Description=Groove Tracker — Web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=__PROJECT_ROOT__/venv/bin/python3 -m groove_tracker.webui
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=__PROJECT_ROOT__/.env
+
+[Install]
+WantedBy=multi-user.target

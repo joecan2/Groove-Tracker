@@ -201,6 +201,9 @@ it never touches an existing `.env`.
 | `UNRECOGNIZED_CLEAR_SECONDS` | `60` | Same idea, for "playing but AudD can't identify it" — clears a now-stale previous song instead of leaving it up forever. |
 | `HA_URL` / `HA_TOKEN` | *(blank = disabled)* | Home Assistant base URL + Long-Lived Access Token. |
 | `HA_PLAYING_ENTITY_ID` | `binary_sensor.groove_tracker_playing` | |
+| `WEBUI_PORT` | `8420` | Port the web dashboard listens on. |
+| `WEBUI_PASSWORD` | *(blank = no login)* | Password for the dashboard. Only leave blank on a fully trusted LAN. |
+| `WEBUI_SECRET_KEY` | *(none)* | Signs the login session cookie. `install.sh` generates this for you — don't set it by hand, and don't edit it later (that logs everyone out). |
 
 ## Create a read-only MongoDB user for DVinyl
 
@@ -337,6 +340,80 @@ and, after the turntable stops for `SILENCE_CLEAR_SECONDS`:
 Silent for 30s+, clearing display.
 ```
 
+## Web UI
+
+A local dashboard for managing the service from a browser instead of SSH
+— check what's playing, start/stop/restart the service, tail its logs,
+and edit `.env`, all from your phone or laptop on the same LAN.
+
+`install.sh` sets this up as step 9/9 (skip it there and re-run
+`install.sh` any time to add it later). It installs:
+
+- **`groove-tracker-web.service`** — a second systemd service, running
+  `python3 -m groove_tracker.webui` as the same unprivileged user as
+  `groove-tracker.service` itself (never as root).
+- **`/etc/sudoers.d/groove-tracker-web`** — grants that user exactly
+  `sudo systemctl start/stop/restart groove-tracker.service` and nothing
+  broader, so the dashboard's Start/Stop/Restart buttons work without the
+  web process needing root. Written via a validated (`visudo -c`)
+  temp file, never edited in place.
+- Adds the user to the `systemd-journal` group, so the Logs page can read
+  `journalctl -u groove-tracker` without sudo.
+
+Once installed:
+
+```
+http://<hostname>.local:8420/
+```
+
+**Pages:**
+
+- **Dashboard** — turntable playing/silent, last recognized song (with
+  album/owned-in-your-collection status), a live copy of whatever's
+  currently on the e-paper panel, and Start/Stop/Restart buttons.
+- **Logs** — the same thing as `journalctl -u groove-tracker -f`, in a
+  browser, auto-refreshing every few seconds.
+- **Config** — every `.env` variable, grouped and labeled, editable as a
+  form instead of `nano .env`. Secrets (AudD token, Mongo URI, HA token,
+  the dashboard's own password) are never echoed back into the page —
+  leave a secret field blank to keep its current value, or type a new one
+  to replace it. Changes only take effect once `groove-tracker.service`
+  restarts (there's a checkbox to do that automatically on save).
+
+**Security model:** this is built for a trusted home LAN, not the public
+internet — there's a single shared password (no per-user accounts), and
+no HTTPS (add a reverse proxy in front of it, e.g. Caddy or nginx, if you
+want TLS). Don't port-forward `8420` to the internet. Leaving
+`WEBUI_PASSWORD` blank disables login entirely; the dashboard will nag you
+about this on every page load until you set one.
+
+### Updating
+
+The Dashboard's **Pull latest & restart** button (`groove_tracker/webui/updater.py`)
+is the no-SSH equivalent of:
+
+```bash
+cd ~/groove-tracker
+git pull --ff-only
+source venv/bin/activate && pip install -r requirements.txt
+sudo systemctl restart groove-tracker
+sudo systemctl restart groove-tracker-web
+```
+
+It only ever pulls (`--ff-only` — fails loudly rather than merging or
+resetting if the Pi's local branch has diverged, e.g. from a file edited
+directly over Samba/SSH) and only reinstalls dependencies/restarts
+anything if the pull actually brought in new commits. Since restarting
+`groove-tracker-web.service` kills the very process handling that button's
+request, it's done via a 2-second-delayed detached command
+(`restart_self_delayed()`), not synchronously — the response ("reload in
+a few seconds") reaches your browser first, then the dashboard restarts.
+
+Needs the extra `systemctl restart groove-tracker-web.service` grant in
+`/etc/sudoers.d/groove-tracker-web` — already included if you installed
+the web UI via `install.sh`'s step 9; re-run `install.sh` if you set the
+web UI up before this button existed, to pick up the new sudoers rule.
+
 ---
 
 ## Troubleshooting appendix
@@ -361,3 +438,6 @@ fresh install:
 | `/tmp` fills up after the service runs for hours (`Error opening '/tmp/tmpXXXXXXXX.wav'`) | An early version leaked a temp WAV file every poll cycle | Already fixed in this codebase — clips are written to a project-local, cleaned-up `.tmp_audio/` directory and deleted after each use. No action needed on a fresh install. |
 | Display stays blank with no errors in the logs | Was an observability gap in an earlier version — a silent failure (e.g. a miswired BUSY pin) looked identical to silent success | Already fixed — `main.py` logs every pipeline stage; `journalctl -u groove-tracker -f` will show exactly where it stops now. |
 | Display keeps showing an old song after the turntable stops, or after a different unrecognized track starts | Nothing used to ever clear the display | Already fixed via the debounced `SILENCE_CLEAR_SECONDS`/`UNRECOGNIZED_CLEAR_SECONDS` logic. If it's happening within those windows, that's expected — it hasn't debounced yet. |
+| Web UI's Start/Stop/Restart buttons fail with a sudo-related error | The `/etc/sudoers.d/groove-tracker-web` drop-in is missing, or failed `visudo -c` validation during install | Re-run `install.sh` (step 9/9), or check its output for a validation warning. |
+| Web UI's Logs page says it can't read the journal | The web UI's user isn't in the `systemd-journal` group yet (needs a fresh login/reboot to take effect after being added) | `sudo usermod -aG systemd-journal <user>`, then log out/in or reboot; `install.sh` does this for you already. |
+| Web UI dashboard has no login | `WEBUI_PASSWORD` is blank in `.env` | Set it — via the Config page itself (works even with no login, so do this immediately if the dashboard is reachable off your LAN), or `nano .env`, then restart `groove-tracker-web.service`. |

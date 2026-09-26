@@ -168,6 +168,17 @@ def _compose_image(artist, title, album, owned, width, height, art_image=None):
     return image
 
 
+def _save_preview(image):
+    """Saves a copy of whatever was just rendered to config.DISPLAY_PREVIEW_PATH,
+    so the web UI (running as a separate process, possibly on real
+    hardware where there's no other way to see the panel without walking
+    over to it) always has something to show -- regardless of MOCK_MODE,
+    unlike the mock-only output in MOCK_DISPLAY_OUTPUT_DIR.
+    """
+    os.makedirs(config.STATE_DIR, exist_ok=True)
+    image.convert("RGB").save(config.DISPLAY_PREVIEW_PATH)
+
+
 def render_now_playing(artist, title, album, owned=False, art_url=None):
     art_image = album_art.get_album_art(art_url, ART_SIZE)
 
@@ -176,6 +187,7 @@ def render_now_playing(artist, title, album, owned=False, art_url=None):
         image = _compose_image(artist, title, album, owned, *MOCK_DISPLAY_SIZE, art_image=art_image)
         out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
         image.save(out_path)
+        _save_preview(image)
         print(f"[mock display] {artist} — {title} ({album}) -> {out_path}", flush=True)
         return
 
@@ -189,6 +201,7 @@ def render_now_playing(artist, title, album, owned=False, art_url=None):
     image = _compose_image(artist, title, album, owned, epd.width, epd.height, art_image=art_image)
     epd.display(epd.getbuffer(image))
     epd.sleep()
+    _save_preview(image)
 
 
 def clear_display():
@@ -202,6 +215,7 @@ def clear_display():
         blank = Image.new("1", MOCK_DISPLAY_SIZE, 255)
         out_path = os.path.join(config.MOCK_DISPLAY_OUTPUT_DIR, "now_playing.png")
         blank.save(out_path)
+        _save_preview(blank)
         print("[mock display] Cleared (idle)", flush=True)
         return
 
@@ -212,3 +226,4 @@ def clear_display():
     epd.init()
     epd.Clear()
     epd.sleep()
+    _save_preview(Image.new("1", (epd.width, epd.height), 255))

@@ -1,0 +1,12 @@
+# Template — install.sh substitutes __USER__ and installs the result to
+# /etc/sudoers.d/groove-tracker-web (via visudo -c, which validates syntax
+# before it's ever placed where sudo will read it).
+#
+# Grants the web UI's user exactly these systemctl invocations on
+# groove-tracker.service and groove-tracker-web.service, and nothing else
+# -- the web UI process itself still runs unprivileged (see
+# groove-tracker-web.service), it just shells out to `sudo -n systemctl
+# ...` for these specific commands. The restart of groove-tracker-web
+# itself is what the dashboard's Update button uses to pick up new code
+# after a git pull -- see webui/service_control.py's restart_self_delayed().
+__USER__ ALL=(root) NOPASSWD: /bin/systemctl start groove-tracker.service, /bin/systemctl stop groove-tracker.service, /bin/systemctl restart groove-tracker.service, /bin/systemctl restart groove-tracker-web.service

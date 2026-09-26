@@ -7,6 +7,7 @@ Pillow
 python-dotenv
 RPi.GPIO
 spidev
+Flask
 
 # Newer versions of Waveshare's e-Paper driver use gpiozero (with lgpio as
 # its backend on current Raspberry Pi OS) for GPIO access rather than only
