@@ -143,3 +143,22 @@ HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID", "binary_sensor.groove_t
 # A separate sensor carrying the actual song info (artist/title/album/art),
 # for a dashboard card -- distinct from the on/off binary_sensor above.
 HA_NOW_PLAYING_ENTITY_ID = os.getenv("HA_NOW_PLAYING_ENTITY_ID", "sensor.groove_tracker_now_playing")
+
+# --- Web UI ---
+# Optional local dashboard (see groove_tracker/webui/) for controlling the
+# service, viewing logs/status, and editing .env from a browser instead of
+# SSH. install.sh sets WEBUI_PASSWORD and WEBUI_SECRET_KEY for you; leaving
+# WEBUI_PASSWORD blank disables login entirely, so only set this up on a
+# trusted LAN.
+WEBUI_PORT = int(os.getenv("WEBUI_PORT", "8420"))
+WEBUI_PASSWORD = os.getenv("WEBUI_PASSWORD", "")
+WEBUI_SECRET_KEY = os.getenv("WEBUI_SECRET_KEY", "")
+
+# Where main.py writes a small JSON snapshot of pipeline state
+# (playing/last recognized song/errors), and where display.py always saves
+# a PNG copy of whatever's currently on the display (real hardware or
+# mock) -- both read by the web UI, which runs as a separate process and
+# so can't just read these out of main_loop's in-memory state directly.
+STATE_DIR = os.path.join(os.path.dirname(__file__), "..", ".state")
+STATUS_PATH = os.path.join(STATE_DIR, "status.json")
+DISPLAY_PREVIEW_PATH = os.path.join(STATE_DIR, "now_playing.png")
