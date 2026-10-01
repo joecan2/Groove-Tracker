@@ -42,6 +42,24 @@
   </div>
 
   <div class="card">
+    <h2>Recently identified</h2>
+    <ul id="history-list" class="history-list">
+      {% for entry in history %}
+        <li>
+          <span class="history-title">{{ entry.title }}</span>
+          <span class="history-artist">{{ entry.artist }}</span>
+          <span class="history-meta">
+            <span class="history-album">{{ entry.album or "" }}</span>{{ " ★" if entry.owned else "" }} &middot;
+            <span class="history-ago" data-recognized-at="{{ entry.recognized_at }}"></span>
+          </span>
+        </li>
+      {% else %}
+        <li class="muted">Nothing recognized yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
     <h2>Display preview</h2>
     {% if preview_exists %}
       <img id="preview-img" class="preview" src="{{ url_for('preview') }}" alt="Current display contents">
@@ -69,6 +87,43 @@ function timeAgo(epochSeconds) {
   return `updated ${Math.round(secs / 3600)}h ago`;
 }
 
+// Short form ("2m ago", no "updated" prefix) for the history list, where
+// the label would otherwise repeat redundantly 5 times in a row.
+function shortTimeAgo(epochSeconds) {
+  if (!epochSeconds) return "";
+  const secs = Math.max(0, Math.round(Date.now() / 1000 - epochSeconds));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86400)}d ago`;
+}
+
+function renderHistory(history) {
+  const list = document.getElementById("history-list");
+  if (!history || !history.length) {
+    list.innerHTML = '<li class="muted">Nothing recognized yet.</li>';
+    return;
+  }
+  list.innerHTML = history.map(entry => `
+    <li>
+      <span class="history-title"></span>
+      <span class="history-artist"></span>
+      <span class="history-meta">
+        <span class="history-album"></span>${entry.owned ? " ★" : ""} &middot;
+        <span class="history-ago">${shortTimeAgo(entry.recognized_at)}</span>
+      </span>
+    </li>
+  `).join("");
+  // Set text via textContent (not interpolated into the HTML string
+  // above) so a song/artist/album containing "<" or "&" can't break the
+  // markup or inject anything -- this data came from AudD, not from us.
+  list.querySelectorAll("li").forEach((li, i) => {
+    li.querySelector(".history-title").textContent = history[i].title;
+    li.querySelector(".history-artist").textContent = history[i].artist;
+    li.querySelector(".history-album").textContent = history[i].album || "";
+  });
+}
+
 async function refresh() {
   try {
     const res = await fetch("{{ url_for('api_status') }}");
@@ -90,6 +145,7 @@ async function refresh() {
       data.playing === null ? "" : `Turntable: ${data.playing ? "playing" : "silent"} ·`;
     card.querySelector('[data-role="error-msg"]').textContent = data.error || "";
     document.getElementById("updated-ago").textContent = timeAgo(data.updated_at);
+    renderHistory(data.history);
 
     const img = document.getElementById("preview-img");
     if (img) img.src = "{{ url_for('preview') }}?t=" + Date.now();
@@ -97,6 +153,14 @@ async function refresh() {
     // A blip in the poll shouldn't spam the console every 5s.
   }
 }
+
+// The server-rendered history list on first page load already has the
+// right title/artist/album text (Jinja filled those in) -- it's only the
+// "X ago" times that need JS, since those depend on the viewer's clock.
+document.querySelectorAll("#history-list .history-ago").forEach(el => {
+  el.textContent = shortTimeAgo(parseFloat(el.dataset.recognizedAt));
+});
+
 setInterval(refresh, 5000);
 </script>
 {% endblock %}

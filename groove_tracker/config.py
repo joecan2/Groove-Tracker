@@ -162,3 +162,8 @@ WEBUI_SECRET_KEY = os.getenv("WEBUI_SECRET_KEY", "")
 STATE_DIR = os.path.join(os.path.dirname(__file__), "..", ".state")
 STATUS_PATH = os.path.join(STATE_DIR, "status.json")
 DISPLAY_PREVIEW_PATH = os.path.join(STATE_DIR, "now_playing.png")
+
+# Rolling log of recently recognized songs (newest first), for the web
+# UI's "Recently identified" list -- see status.py's append_history().
+HISTORY_PATH = os.path.join(STATE_DIR, "history.json")
+HISTORY_MAX_ENTRIES = int(os.getenv("HISTORY_MAX_ENTRIES", "5"))

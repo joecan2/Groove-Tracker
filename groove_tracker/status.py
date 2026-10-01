@@ -66,3 +66,55 @@ def read_status():
             "owned": None,
             "error": None,
         }
+
+
+def append_history(song, owned):
+    """Adds a newly-recognized song to the rolling history log (newest
+    first, capped at config.HISTORY_MAX_ENTRIES), for the web UI's
+    "Recently identified" list.
+
+    Call this only when a *new* song actually starts showing on the
+    display (main.py's "Display updated" branch in process_once) -- not
+    on every poll, and not when process_once's own "same as last shown"
+    check skips re-rendering, or every repeat recognition of a song
+    that's still playing would bloat the log with duplicates of itself
+    instead of showing 5 distinct tracks.
+
+    Also skips appending if this is an exact repeat of the most recent
+    entry, which covers the one gap process_once's own check doesn't:
+    a service restart (main_loop always starts from a fresh in-memory
+    state, so last_shown/screen_state don't carry over) while the same
+    song is still playing would otherwise re-log it as if it were a new
+    track.
+    """
+    history = read_history()
+    if history and history[0]["artist"] == song["artist"] and history[0]["title"] == song["title"]:
+        return
+
+    entry = {
+        "artist": song["artist"],
+        "title": song["title"],
+        "album": song.get("album"),
+        "owned": owned,
+        "recognized_at": time.time(),
+    }
+    history.insert(0, entry)
+    history = history[: config.HISTORY_MAX_ENTRIES]
+
+    os.makedirs(config.STATE_DIR, exist_ok=True)
+    tmp_path = config.HISTORY_PATH + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(history, f)
+    os.replace(tmp_path, config.HISTORY_PATH)
+
+
+def read_history():
+    """Returns the rolling history list (newest first), or [] if it
+    doesn't exist yet or is unreadable (see read_status's docstring for
+    why that's expected, not an error).
+    """
+    try:
+        with open(config.HISTORY_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return []

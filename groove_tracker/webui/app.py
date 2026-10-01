@@ -67,6 +67,7 @@ def create_app():
         return render_template(
             "dashboard.html",
             status=status.read_status(),
+            history=status.read_history(),
             service_status=service_control.get_status(),
             password_configured=_password_configured(),
             preview_exists=os.path.exists(config.DISPLAY_PREVIEW_PATH),
@@ -80,6 +81,7 @@ def create_app():
         return jsonify({
             **status.read_status(),
             "service_status": service_control.get_status(),
+            "history": status.read_history(),
         })
 
     @app.get("/preview.png")

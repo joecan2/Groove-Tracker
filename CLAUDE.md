@@ -299,6 +299,17 @@ through the filesystem, never in-process:
 - `status.py`'s `write_status()`/`read_status()` pass a small JSON
   snapshot (`.state/status.json`) of what `main.py` last saw -- playing/
   silent, last recognized song, owned, last error.
+- `status.py`'s `append_history()`/`read_history()` keep a rolling,
+  newest-first log (`.state/history.json`, capped at
+  `config.HISTORY_MAX_ENTRIES`) of distinct recognized songs, for the
+  dashboard's "Recently identified" list. Only called from
+  `process_once`'s "a new song actually started rendering" branch -- not
+  on every poll -- and skips appending an exact repeat of the most recent
+  entry, which is what stops a service restart from re-logging a
+  still-playing song as if it were a new track (`process_once`'s own
+  "same as last shown" check only catches that within a single
+  continuous run, since `main_loop` always starts from fresh in-memory
+  state).
 - `display.py`'s `_save_preview()` always writes a PNG copy of whatever
   was just rendered to `.state/now_playing.png`, in both `MOCK_MODE` and
   on real hardware -- this is what lets the dashboard show "what's on the

@@ -111,6 +111,7 @@ def process_once(state=None):
 
         display.render_now_playing(song["artist"], song["title"], album, owned=owned, art_url=art_url)
         print("Display updated.", flush=True)
+        status.append_history(song, owned)
 
         try:
             home_assistant.set_now_playing(song["artist"], song["title"], album, owned=owned, art_url=art_url)
