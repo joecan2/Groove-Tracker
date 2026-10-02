@@ -256,6 +256,35 @@ differs.
 Leave `HA_URL`/`HA_TOKEN` blank to disable this feature entirely — the
 rest of the project works fine without it.
 
+### Dashboard card (what's playing)
+
+Besides the on/off `binary_sensor.groove_tracker_playing`, the app also
+pushes `sensor.groove_tracker_now_playing` (override with
+`HA_NOW_PLAYING_ENTITY_ID`) whenever a new song is recognized. Its state
+is `"<title> — <artist>"`, with `artist`, `title`, `album`, `owned`,
+`art_url` and `entity_picture` attributes. It resets to `Not playing`
+when the e-paper display goes idle. Example card:
+
+```yaml
+type: picture-entity
+entity: sensor.groove_tracker_now_playing
+name: Now Playing
+show_state: true
+show_name: true
+```
+
+or, for text only with the album and owned flag:
+
+```yaml
+type: entity
+entity: sensor.groove_tracker_now_playing
+attribute: album
+name: Album
+```
+
+Test it without a turntable:
+`python3 -c "from groove_tracker.home_assistant import set_now_playing; set_now_playing('Queen', 'Bohemian Rhapsody', 'Greatest Hits', owned=True)"`
+
 ## Samba (file sharing)
 
 `install.sh` already installed Samba and added the `[groove-tracker]`
