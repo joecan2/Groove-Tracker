@@ -140,9 +140,9 @@ UNRECOGNIZED_CLEAR_SECONDS = int(os.getenv("UNRECOGNIZED_CLEAR_SECONDS", "60"))
 HA_URL = os.getenv("HA_URL", "")
 HA_TOKEN = os.getenv("HA_TOKEN", "")
 HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID", "binary_sensor.groove_tracker_playing")
-# A separate sensor carrying the actual song info (artist/title/album/art),
-# for a dashboard card -- distinct from the on/off binary_sensor above.
-HA_NOW_PLAYING_ENTITY_ID = os.getenv("HA_NOW_PLAYING_ENTITY_ID", "sensor.groove_tracker_now_playing")
+# A media_player entity carrying the current song (title/artist/album),
+# for a dashboard media card -- distinct from the on/off binary_sensor above.
+HA_NOW_PLAYING_ENTITY_ID = os.getenv("HA_NOW_PLAYING_ENTITY_ID", "media_player.groove_tracker")
 
 # --- Web UI ---
 # Optional local dashboard (see groove_tracker/webui/) for controlling the

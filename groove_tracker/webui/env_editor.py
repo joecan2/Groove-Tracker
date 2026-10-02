@@ -55,7 +55,7 @@ FIELDS = [
         ("HA_URL", "text", "Home Assistant URL", False, "e.g. http://192.168.1.50:8123 -- blank disables this feature."),
         ("HA_TOKEN", "secret", "Long-lived access token", True, ""),
         ("HA_PLAYING_ENTITY_ID", "text", "Playing entity ID", False, ""),
-        ("HA_NOW_PLAYING_ENTITY_ID", "text", "Now-playing sensor ID", False, "Song info sensor for a dashboard card."),
+        ("HA_NOW_PLAYING_ENTITY_ID", "text", "Now-playing media player ID", False, "media_player entity showing the current song."),
     ]),
     ("Web UI", [
         ("WEBUI_PORT", "number", "Port", False, ""),

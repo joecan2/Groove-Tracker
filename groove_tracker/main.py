@@ -114,7 +114,7 @@ def process_once(state=None):
         status.append_history(song, owned)
 
         try:
-            home_assistant.set_now_playing(song["artist"], song["title"], album, owned=owned, art_url=art_url)
+            home_assistant.set_now_playing(song["artist"], song["title"], album, owned=owned)
         except Exception as e:
             # Same reasoning as the playing-state report above -- a Home
             # Assistant hiccup shouldn't block the display from working.

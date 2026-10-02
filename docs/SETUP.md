@@ -259,27 +259,25 @@ rest of the project works fine without it.
 ### Dashboard card (what's playing)
 
 Besides the on/off `binary_sensor.groove_tracker_playing`, the app also
-pushes `sensor.groove_tracker_now_playing` (override with
-`HA_NOW_PLAYING_ENTITY_ID`) whenever a new song is recognized. Its state
-is `"<title> — <artist>"`, with `artist`, `title`, `album`, `owned`,
-`art_url` and `entity_picture` attributes. It resets to `Not playing`
-when the e-paper display goes idle. Example card:
+pushes `media_player.groove_tracker` (override with
+`HA_NOW_PLAYING_ENTITY_ID`) whenever a new song is recognized. It's
+`playing` with `media_title`, `media_artist` and `media_album_name`
+attributes (plus `owned`), and goes back to `idle` with no attributes
+when the e-paper display goes idle. No album art is sent. It isn't backed
+by a real integration, so it shows as unavailable after a Home Assistant
+restart until the next song is recognized, and it has no transport
+controls. Example cards:
 
 ```yaml
-type: picture-entity
-entity: sensor.groove_tracker_now_playing
-name: Now Playing
-show_state: true
-show_name: true
+type: media-control
+entity: media_player.groove_tracker
 ```
 
-or, for text only with the album and owned flag:
+or a compact tile:
 
 ```yaml
-type: entity
-entity: sensor.groove_tracker_now_playing
-attribute: album
-name: Album
+type: tile
+entity: media_player.groove_tracker
 ```
 
 Test it without a turntable:
