@@ -90,6 +90,7 @@ def append_history(song, owned):
     history = read_history()
     if history and history[0]["artist"] == song["artist"] and history[0]["title"] == song["title"]:
         return
+    print(f"Added to recent history: {song['artist']} — {song['title']}", flush=True)
 
     entry = {
         "artist": song["artist"],
@@ -115,6 +116,14 @@ def read_history():
     """
     try:
         with open(config.HISTORY_PATH) as f:
-            return json.load(f)
+            history = json.load(f)
     except (OSError, json.JSONDecodeError):
         return []
+    if not isinstance(history, list):
+        return []
+    # Drop anything malformed rather than let one bad entry break both the
+    # dashboard render and the next append.
+    return [
+        entry for entry in history
+        if isinstance(entry, dict) and "artist" in entry and "title" in entry
+    ]

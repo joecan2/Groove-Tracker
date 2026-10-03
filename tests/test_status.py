@@ -93,3 +93,16 @@ def test_append_history_skips_exact_repeat_of_most_recent_entry():
     status.append_history(song, owned=True)
 
     assert len(status.read_history()) == 1
+
+
+def test_read_history_ignores_malformed_entries_and_non_lists():
+    import json
+
+    os.makedirs(config.STATE_DIR, exist_ok=True)
+    with open(config.HISTORY_PATH, "w") as f:
+        json.dump([{"artist": "Queen", "title": "X"}, "junk", {"artist": "no title"}], f)
+    assert [e["artist"] for e in status.read_history()] == ["Queen"]
+
+    with open(config.HISTORY_PATH, "w") as f:
+        json.dump({"not": "a list"}, f)
+    assert status.read_history() == []

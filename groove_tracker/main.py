@@ -109,9 +109,17 @@ def process_once(state=None):
             owned = False
             print(f"Not in collection, using AudD's album: {album} — rendering to display...", flush=True)
 
+        # Logged before rendering, and in its own try/except, so a display
+        # or Home Assistant failure can't stop an identified song from
+        # showing up in "Recently identified" -- that list is "what AudD
+        # recognized," not "what made it onto the panel."
+        try:
+            status.append_history({"artist": song["artist"], "title": song["title"], "album": album}, owned)
+        except Exception as e:
+            print(f"Error saving to recent history: {e}", flush=True)
+
         display.render_now_playing(song["artist"], song["title"], album, owned=owned, art_url=art_url)
         print("Display updated.", flush=True)
-        status.append_history(song, owned)
 
         try:
             home_assistant.set_now_playing(song["artist"], song["title"], album, owned=owned)
