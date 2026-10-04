@@ -119,7 +119,7 @@ def create_app():
         restarted_web = False
         if updater.pulled_new_commits(pull_result):
             messages.append(("dependencies", updater.install_requirements()))
-            service_control.restart()  # picks up new pipeline code
+            messages.append(("restart groove-tracker", service_control.restart()))  # picks up new pipeline code
             restarted_web = service_control.restart_self_delayed()  # picks up new web UI code
 
         ok = all(r["ok"] for _, r in messages)
