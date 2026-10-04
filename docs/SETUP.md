@@ -256,33 +256,6 @@ differs.
 Leave `HA_URL`/`HA_TOKEN` blank to disable this feature entirely — the
 rest of the project works fine without it.
 
-### Dashboard card (what's playing)
-
-Besides the on/off `binary_sensor.groove_tracker_playing`, the app also
-pushes `media_player.groove_tracker` (override with
-`HA_NOW_PLAYING_ENTITY_ID`) whenever a new song is recognized. It's
-`playing` with `media_title`, `media_artist` and `media_album_name`
-attributes (plus `owned`), and goes back to `idle` with no attributes
-when the e-paper display goes idle. No album art is sent. It isn't backed
-by a real integration, so it shows as unavailable after a Home Assistant
-restart until the next song is recognized, and it has no transport
-controls. Example cards:
-
-```yaml
-type: media-control
-entity: media_player.groove_tracker
-```
-
-or a compact tile:
-
-```yaml
-type: tile
-entity: media_player.groove_tracker
-```
-
-Test it without a turntable:
-`python3 -c "from groove_tracker.home_assistant import set_now_playing; set_now_playing('Queen', 'Bohemian Rhapsody', 'Greatest Hits', owned=True)"`
-
 ## Samba (file sharing)
 
 `install.sh` already installed Samba and added the `[groove-tracker]`

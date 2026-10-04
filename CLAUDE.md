@@ -276,7 +276,6 @@ configured field names.
 
 - `tests/test_audio_capture.py` — pure RMS-level computation (no I/O beyond reading a local WAV fixture, no MOCK_MODE dependency)
 - `tests/test_collection_match.py` — pure-Python matching logic (no I/O)
-- `tests/test_home_assistant.py` — pure now-playing payload construction (no network)
 - `tests/test_main_mock_pipeline.py` — full pipeline in MOCK_MODE, no real hardware/network
 - When adding features, prefer keeping new logic in pure functions that can
   be unit tested the same way, rather than deep inside hardware-touching
@@ -284,10 +283,9 @@ configured field names.
 
 ## Home Assistant integration
 
-`home_assistant.py` reports to a Home Assistant instance via two directly-set entities (neither backed by a real integration — this is the standard lightweight pattern for external devices, see the module's docstring):
+`home_assistant.py` reports play/pause state to a Home Assistant instance via a directly-set entity (not backed by a real integration — this is the standard lightweight pattern for external devices, see the module's docstring). Song info is deliberately **not** pushed to Home Assistant (a media_player/sensor "now playing" entity was built and then removed at the user's request):
 
 - `binary_sensor.groove_tracker_playing` (`set_playing_state`) — plain on/off. The actual light control lives in a Home Assistant automation (`automation.groove_tracker_now_playing_light`, created via the HA MCP tools, not in this repo) watching that entity and controlling `light.now_playing_light` with a 30s debounce on the off-transition. If asked to modify the light-control behavior, that means editing the HA automation, not this codebase — this repo only owns reporting the playing state. Called every poll cycle regardless of change, so it heals itself after a Home Assistant restart.
-- `media_player.groove_tracker` (`set_now_playing`) — the actual song info, for a media-control/tile card. State is `"playing"` with `media_title`/`media_artist`/`media_album_name` (plus `owned`) while a song is recognized, `"idle"` with no media attributes otherwise. The user explicitly doesn't want album art on the card, so no `entity_picture`/`art_url` is ever sent (the states API replaces attributes wholesale, so omitting them is also what clears stale info). It's a plain states-API entity, not a real HA integration, so it has no transport controls and shows unavailable after an HA restart until the next push. Unlike the binary_sensor, this is only pushed **on change** — a real song recognized (`process_once`), or a reset to `"idle"` whenever `_maybe_clear_for_silence`/`_maybe_clear_for_unrecognized` show the idle screen — matching the e-paper display's own render-on-change cadence rather than every poll. The state/attributes construction is a pure function (`_build_now_playing_payload`, tested in `tests/test_home_assistant.py`) for the same testability reasons as `_compute_rms_level`.
 
 ## Web UI
 

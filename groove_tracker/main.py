@@ -1,7 +1,7 @@
 """
 Main loop: record audio -> check for silence -> identify song -> check your
 DVinyl collection -> render to the e-paper display -> report playing state
-and now-playing info to Home Assistant.
+to Home Assistant.
 
 Run with:      python -m groove_tracker
 Or for a single one-shot pass (handy for testing): main_loop(once=True)
@@ -121,13 +121,6 @@ def process_once(state=None):
         display.render_now_playing(song["artist"], song["title"], album, owned=owned, art_url=art_url)
         print("Display updated.", flush=True)
 
-        try:
-            home_assistant.set_now_playing(song["artist"], song["title"], album, owned=owned)
-        except Exception as e:
-            # Same reasoning as the playing-state report above -- a Home
-            # Assistant hiccup shouldn't block the display from working.
-            print(f"Error reporting now-playing to Home Assistant: {e}", flush=True)
-
         state["last_shown"] = key
         state["screen_state"] = "song"
         state["last_album"] = album
@@ -167,10 +160,6 @@ def _maybe_clear_for_silence(state):
     if state["screen_state"] != "idle" and (now - state["silence_since"]) >= config.SILENCE_CLEAR_SECONDS:
         print(f"Silent for {config.SILENCE_CLEAR_SECONDS}s+, showing idle screen.", flush=True)
         display.render_idle()
-        try:
-            home_assistant.set_now_playing()
-        except Exception as e:
-            print(f"Error reporting now-playing to Home Assistant: {e}", flush=True)
         state["screen_state"] = "idle"
         # Force a fresh render next time, even if the same song resumes --
         # otherwise it'd be (wrongly) treated as "unchanged" and skipped.
@@ -203,10 +192,6 @@ def _maybe_clear_for_unrecognized(state):
     if state["screen_state"] != "idle" and (now - state["unrecognized_since"]) >= config.UNRECOGNIZED_CLEAR_SECONDS:
         print(f"Unrecognized for {config.UNRECOGNIZED_CLEAR_SECONDS}s+, showing idle screen.", flush=True)
         display.render_idle()
-        try:
-            home_assistant.set_now_playing()
-        except Exception as e:
-            print(f"Error reporting now-playing to Home Assistant: {e}", flush=True)
         state["screen_state"] = "idle"
         state["last_shown"] = None
 
