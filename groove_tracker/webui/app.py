@@ -79,6 +79,7 @@ def create_app():
             stale=_main_service_stale(status_data, service_state),
             running_commit=status_data.get("code_version") or "an older version",
             disk_commit=status.current_commit(),
+            version=status.current_version() or "unknown",
             history=status.read_history(),
             service_status=service_state,
             password_configured=_password_configured(),

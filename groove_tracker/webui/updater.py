@@ -33,7 +33,9 @@ def pull_latest():
     until the subprocess timeout -- there's no terminal here to prompt.
     """
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    return _run(["git", "pull", "--ff-only"], cwd=PROJECT_ROOT, timeout=30, env=env)
+    # --tags so release tags (shown as the dashboard's version number) come
+    # along even when their commits were already fetched earlier.
+    return _run(["git", "pull", "--ff-only", "--tags"], cwd=PROJECT_ROOT, timeout=30, env=env)
 
 
 def pulled_new_commits(pull_result):

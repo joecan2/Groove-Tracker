@@ -36,6 +36,22 @@ def current_commit():
     return result.stdout.strip() or None
 
 
+def current_version():
+    """Human-readable version of the code on disk: the release tag (e.g.
+    "v1.0.0"), plus commits-since and short hash when ahead of it (e.g.
+    "v1.0.0-17-ge61a5d5"), or just the hash if no tag is available."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            cwd=_PROJECT_ROOT, capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 def code_is_stale(running_commit, disk_commit):
     """True if a process running `running_commit` is behind the code on
     disk. A missing running_commit counts as stale (it was started by code
