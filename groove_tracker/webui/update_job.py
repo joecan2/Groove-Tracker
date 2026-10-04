@@ -200,7 +200,6 @@ def _fail(state, step_id, detail, summary):
 def _wait_for_main(state, started, target_commit):
     """Waits until the restarted identifier service is active and has
     reported in from the target commit. Returns (ok, detail)."""
-    estimate = state["estimates"]["main"]
     deadline = started + MAIN_READY_TIMEOUT
     while time.time() < deadline:
         service_state = service_control.get_status()
@@ -211,10 +210,7 @@ def _wait_for_main(state, started, target_commit):
         right_code = target_commit is None or reported.get("code_version") == target_commit
         if service_state == "active" and fresh and right_code:
             return True, ""
-        elapsed = int(time.time() - started)
-        _step(state, "main")["detail"] = (
-            f"Waiting for it to start up... {elapsed}s so far (usually about {estimate}s)"
-        )
+        _step(state, "main")["detail"] = "Waiting for it to start up..."
         _save(state)
         time.sleep(2)
     return False, (
@@ -274,7 +270,7 @@ def _run(state):
             return
         seconds = time.time() - restart_started
         _record_timing("main", seconds)
-        _end(state, "main", "done", f"Running {target or 'the new code'} after {int(seconds)}s")
+        _end(state, "main", "done", f"Running {target or 'the new code'}")
 
         if not pulled:
             _finish(state, True, f"Identifier service restarted (v{status.current_version()}).")

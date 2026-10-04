@@ -82,7 +82,8 @@
     <button type="button" id="update-btn">Pull latest &amp; restart</button>
     <div id="update-progress" hidden>
       <ul id="update-steps" class="update-steps"></ul>
-      <p id="update-timer" class="muted small"></p>
+      <div class="progress"><div id="update-bar" class="progress-bar"></div></div>
+      <p id="update-percent" class="muted small"></p>
       <p id="update-summary"></p>
     </div>
   </div>
@@ -180,18 +181,25 @@ const STEP_ICON = {pending: "○", running: "◐", done: "✓", failed: "✗", s
 const updateBtn = document.getElementById("update-btn");
 let updatePolling = false;
 
-function remainingSeconds(state) {
-  // Only counts the slow restart steps, using the server's own recorded
-  // timings from previous updates (or defaults until there are some).
-  let total = 0;
+// Rough relative size of each step. The two restart steps use the server's
+// own recorded timings from previous updates (or defaults until there are
+// some); the quick ones are fixed guesses.
+const STEP_WEIGHT = {pull: 5, deps: 20};
+
+function progressPercent(state) {
+  if (!state.running && state.ok) return 100;
+  let done = 0, total = 0;
   for (const step of state.steps) {
-    if (step.id !== "main" && step.id !== "web") continue;
-    if (step.status === "pending") total += state.estimates[step.id];
-    if (step.status === "running") {
-      total += Math.max(0, state.estimates[step.id] - (state.now - step.started_at));
+    if (step.status === "skipped") continue;
+    const weight = STEP_WEIGHT[step.id] ?? state.estimates[step.id];
+    total += weight;
+    if (step.status === "done") done += weight;
+    // A running step counts partway, but never as complete until it is.
+    else if (step.status === "running") {
+      done += weight * Math.min(0.95, (state.now - step.started_at) / weight);
     }
   }
-  return Math.round(total);
+  return total ? Math.round(100 * done / total) : 0;
 }
 
 function renderUpdate(state, connectionLost) {
@@ -211,19 +219,19 @@ function renderUpdate(state, connectionLost) {
     return li;
   }));
 
-  const timer = document.getElementById("update-timer");
+  const percent = progressPercent(state);
+  const bar = document.getElementById("update-bar");
+  bar.style.width = percent + "%";
+  bar.className = "progress-bar" + (!state.running && !state.ok ? " progress-failed" : "");
+  document.getElementById("update-percent").textContent = percent + "%";
+
   const summary = document.getElementById("update-summary");
   if (state.running) {
-    const elapsed = Math.round(state.now - state.started_at);
-    const left = remainingSeconds(state);
-    timer.textContent = `Elapsed ${elapsed}s` + (left > 0 ? ` · about ${left}s to go` : " · finishing up");
     summary.textContent = connectionLost
       ? "The dashboard is restarting, reconnecting automatically..."
       : "";
     summary.className = "muted";
   } else {
-    const took = Math.round(state.finished_at - state.started_at);
-    timer.textContent = `Finished in ${took}s`;
     summary.textContent = state.summary;
     summary.className = state.ok ? "update-ok" : "update-failed";
   }
