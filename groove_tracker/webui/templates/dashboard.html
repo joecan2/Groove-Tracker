@@ -5,6 +5,14 @@
 {% if not password_configured %}
   <div class="banner warn">No WEBUI_PASSWORD set — this dashboard has no login. Fine on a fully trusted LAN only; set one in <a href="{{ url_for('config_page') }}">Config</a> otherwise.</div>
 {% endif %}
+{% if stale %}
+  <div class="banner warn">
+    The identifier service is still running {{ running_commit }}, but {{ disk_commit }} is on disk, so recent updates aren't active yet.
+    <form method="post" action="{{ url_for('service_action', action='restart') }}" class="inline-form">
+      <button type="submit">Restart it now</button>
+    </form>
+  </div>
+{% endif %}
 {% if flash %}
   <div class="banner {{ 'ok' if flash == 'ok' else 'error' }}"><pre class="banner-msg">{{ flash_msg or (flash == 'ok' and 'Done.') }}</pre></div>
 {% endif %}

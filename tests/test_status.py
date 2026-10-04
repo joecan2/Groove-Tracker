@@ -106,3 +106,12 @@ def test_read_history_ignores_malformed_entries_and_non_lists():
     with open(config.HISTORY_PATH, "w") as f:
         json.dump({"not": "a list"}, f)
     assert status.read_history() == []
+
+
+def test_code_is_stale_compares_running_commit_to_disk():
+    assert status.code_is_stale("abc1234", "def5678") is True
+    assert status.code_is_stale("abc1234", "abc1234") is False
+    # Started by code too old to report a commit at all.
+    assert status.code_is_stale(None, "abc1234") is True
+    # Can't tell what's on disk (no git) -- don't claim it's stale.
+    assert status.code_is_stale("abc1234", None) is False

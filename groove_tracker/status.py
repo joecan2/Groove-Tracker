@@ -13,9 +13,41 @@ hardware/network dependency to mock out in the first place.
 """
 import json
 import os
+import subprocess
 import time
 
 from . import config
+
+_PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+
+
+def current_commit():
+    """Short hash of the code currently checked out on disk, or None if
+    git isn't available or this isn't a git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=_PROJECT_ROOT, capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def code_is_stale(running_commit, disk_commit):
+    """True if a process running `running_commit` is behind the code on
+    disk. A missing running_commit counts as stale (it was started by code
+    old enough not to report one), as long as the disk commit is known.
+    """
+    return bool(disk_commit) and running_commit != disk_commit
+
+
+# Captured once, at import: in the main service this is the commit it
+# started with -- which is exactly what "what code is running" means, even
+# after a later `git pull` changes the files on disk.
+RUNNING_COMMIT = current_commit()
 
 
 def write_status(playing, song=None, owned=None, error=None):
@@ -36,6 +68,7 @@ def write_status(playing, song=None, owned=None, error=None):
         "album": song.get("album") if song else None,
         "owned": owned,
         "error": error,
+        "code_version": RUNNING_COMMIT,
     }
     tmp_path = config.STATUS_PATH + ".tmp"
     with open(tmp_path, "w") as f:
@@ -65,6 +98,7 @@ def read_status():
             "album": None,
             "owned": None,
             "error": None,
+            "code_version": None,
         }
 
 

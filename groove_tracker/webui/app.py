@@ -61,14 +61,26 @@ def create_app():
         session.clear()
         return redirect(url_for("login"))
 
+    def _main_service_stale(status_data, service_state):
+        """True if the (running) main service started on older code than
+        what's on disk -- i.e. a pull happened but it never restarted."""
+        return service_state == "active" and status.code_is_stale(
+            status_data.get("code_version"), status.current_commit()
+        )
+
     @app.get("/")
     @login_required
     def dashboard():
+        status_data = status.read_status()
+        service_state = service_control.get_status()
         return render_template(
             "dashboard.html",
-            status=status.read_status(),
+            status=status_data,
+            stale=_main_service_stale(status_data, service_state),
+            running_commit=status_data.get("code_version") or "an older version",
+            disk_commit=status.current_commit(),
             history=status.read_history(),
-            service_status=service_control.get_status(),
+            service_status=service_state,
             password_configured=_password_configured(),
             preview_exists=os.path.exists(config.DISPLAY_PREVIEW_PATH),
             flash=request.args.get("flash"),
@@ -117,9 +129,18 @@ def create_app():
         messages = [("git pull", pull_result)]
 
         restarted_web = False
-        if updater.pulled_new_commits(pull_result):
+        pulled = updater.pulled_new_commits(pull_result)
+        # Also restart if the code was already pulled by other means (e.g.
+        # by hand over SSH) but the main service never picked it up --
+        # otherwise "Already up to date" would leave it on old code forever.
+        stale = pull_result["ok"] and _main_service_stale(
+            status.read_status(), service_control.get_status()
+        )
+        if pulled:
             messages.append(("dependencies", updater.install_requirements()))
+        if pulled or stale:
             messages.append(("restart groove-tracker", service_control.restart()))  # picks up new pipeline code
+        if pulled:
             restarted_web = service_control.restart_self_delayed()  # picks up new web UI code
 
         ok = all(r["ok"] for _, r in messages)
