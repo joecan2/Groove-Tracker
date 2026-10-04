@@ -78,15 +78,17 @@
 
   <div class="card">
     <h2>Update</h2>
-    <p class="muted small">Pulls the latest commits from GitHub (fast-forward only), reinstalls dependencies if anything changed, then restarts the service(s).</p>
-    <form method="post" action="{{ url_for('update') }}" class="inline-form"
-          onsubmit="return confirm('Pull the latest code from GitHub and restart the affected service(s)?');">
-      <button type="submit" id="update-btn">Pull latest &amp; restart</button>
-    </form>
+    <p class="muted small">Pulls the latest commits from GitHub (fast-forward only), reinstalls dependencies if anything changed, then restarts the services (not the Pi itself).</p>
+    <button type="button" id="update-btn">Pull latest &amp; restart</button>
+    <div id="update-progress" hidden>
+      <ul id="update-steps" class="update-steps"></ul>
+      <p id="update-timer" class="muted small"></p>
+      <p id="update-summary"></p>
+    </div>
   </div>
 </section>
 
-<p class="muted small version-footer">Groove Tracker {{ version }}</p>
+<p class="muted small version-footer">Groove Tracker v{{ version }}{% if disk_commit %} &middot; {{ disk_commit }}{% endif %}</p>
 
 <script>
 function timeAgo(epochSeconds) {
@@ -172,5 +174,113 @@ document.querySelectorAll("#history-list .history-ago").forEach(el => {
 });
 
 setInterval(refresh, 5000);
+
+// ---- Update progress ----------------------------------------------------
+const STEP_ICON = {pending: "○", running: "◐", done: "✓", failed: "✗", skipped: "–"};
+const updateBtn = document.getElementById("update-btn");
+let updatePolling = false;
+
+function remainingSeconds(state) {
+  // Only counts the slow restart steps, using the server's own recorded
+  // timings from previous updates (or defaults until there are some).
+  let total = 0;
+  for (const step of state.steps) {
+    if (step.id !== "main" && step.id !== "web") continue;
+    if (step.status === "pending") total += state.estimates[step.id];
+    if (step.status === "running") {
+      total += Math.max(0, state.estimates[step.id] - (state.now - step.started_at));
+    }
+  }
+  return Math.round(total);
+}
+
+function renderUpdate(state, connectionLost) {
+  document.getElementById("update-progress").hidden = false;
+
+  const list = document.getElementById("update-steps");
+  list.replaceChildren(...state.steps.map(step => {
+    const li = document.createElement("li");
+    li.className = "step-" + step.status;
+    li.textContent = `${STEP_ICON[step.status]} ${step.label}`;
+    if (step.detail) {
+      const detail = document.createElement("div");
+      detail.className = "step-detail muted small";
+      detail.textContent = step.detail;  // may contain raw git/pip output
+      li.appendChild(detail);
+    }
+    return li;
+  }));
+
+  const timer = document.getElementById("update-timer");
+  const summary = document.getElementById("update-summary");
+  if (state.running) {
+    const elapsed = Math.round(state.now - state.started_at);
+    const left = remainingSeconds(state);
+    timer.textContent = `Elapsed ${elapsed}s` + (left > 0 ? ` · about ${left}s to go` : " · finishing up");
+    summary.textContent = connectionLost
+      ? "The dashboard is restarting, reconnecting automatically..."
+      : "";
+    summary.className = "muted";
+  } else {
+    const took = Math.round(state.finished_at - state.started_at);
+    timer.textContent = `Finished in ${took}s`;
+    summary.textContent = state.summary;
+    summary.className = state.ok ? "update-ok" : "update-failed";
+  }
+}
+
+async function pollUpdate() {
+  let state = null;
+  let lost = false;
+  try {
+    const res = await fetch("{{ url_for('api_update_status') }}", {cache: "no-store"});
+    state = await res.json();
+  } catch (e) {
+    lost = true;  // expected for a few seconds while the dashboard restarts
+  }
+
+  if (state && state.steps) {
+    renderUpdate(state, false);
+    if (!state.running) {
+      updatePolling = false;
+      updateBtn.disabled = false;
+      if (state.ok) setTimeout(() => location.reload(), 3000);  // pick up the new version/status
+      return;
+    }
+  } else if (lost) {
+    document.getElementById("update-summary").textContent =
+      "The dashboard is restarting, reconnecting automatically...";
+  }
+  setTimeout(pollUpdate, 1500);
+}
+
+function beginPolling() {
+  if (updatePolling) return;
+  updatePolling = true;
+  updateBtn.disabled = true;
+  pollUpdate();
+}
+
+updateBtn.addEventListener("click", async () => {
+  if (!confirm("Pull the latest code from GitHub and restart the affected services?")) return;
+  updateBtn.disabled = true;
+  try {
+    const res = await fetch("{{ url_for('update') }}", {method: "POST"});
+    const data = await res.json();
+    if (!data.started && res.status !== 409) throw new Error(data.reason || "Couldn't start the update");
+  } catch (e) {
+    updateBtn.disabled = false;
+    alert("Couldn't start the update: " + e.message);
+    return;
+  }
+  beginPolling();
+});
+
+// If an update is already running (e.g. the page was reloaded mid-update),
+// pick the progress display back up.
+fetch("{{ url_for('api_update_status') }}", {cache: "no-store"})
+  .then(res => res.json())
+  .then(state => { if (state.running) beginPolling(); })
+  .catch(() => {});
 </script>
 {% endblock %}

@@ -16,6 +16,7 @@ systemctl/journalctl/sudo binary is caught and reported as a normal
 project treats hardware that isn't present (see MOCK_MODE elsewhere).
 """
 import subprocess
+import time
 
 SERVICE_NAME = "groove-tracker.service"
 _TIMEOUT = 15
@@ -57,6 +58,25 @@ def get_status():
     except subprocess.TimeoutExpired:
         return "unknown"
     return result.stdout.strip() or "unknown"
+
+
+def get_start_time():
+    """Epoch seconds when the main service last became active, or None if
+    unknown (not Linux/systemd, or it has never started). systemd reports
+    this on the same monotonic clock Python's time.monotonic() uses on
+    Linux, so converting to wall time is just subtracting the elapsed gap.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", SERVICE_NAME, "-p", "ActiveEnterTimestampMonotonic", "--value"],
+            capture_output=True, text=True, timeout=_TIMEOUT,
+        )
+        micros = int(result.stdout.strip())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if micros <= 0:
+        return None
+    return time.time() - (time.monotonic() - micros / 1_000_000)
 
 
 def start():

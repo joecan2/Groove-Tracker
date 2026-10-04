@@ -317,14 +317,29 @@ through the filesystem, never in-process:
   narrowly via `/etc/sudoers.d/groove-tracker-web` -- see install.sh step
   9/9) rather than importing `main.py` directly, so the dashboard keeps
   working even if the main service is stopped or crashed.
-- `webui/updater.py` backs the dashboard's "Pull latest & restart" button:
-  `git pull --ff-only` (never resets/force-anything -- fails loudly on
-  diverged history instead), then `pip install -r requirements.txt` and a
-  restart of both services, but only if the pull actually brought in new
-  commits. Restarting `groove-tracker-web.service` itself is done via
-  `service_control.restart_self_delayed()` -- a detached, sleep-then-
-  restart subprocess, since a synchronous restart would kill the very
-  process handling that request before the response reached the browser.
+- `webui/updater.py` + `webui/update_job.py` back the dashboard's "Pull
+  latest & restart" button. `updater.py` has the git/pip primitives
+  (`git pull --ff-only` -- never resets/force-anything, fails loudly on
+  diverged history instead). `update_job.py` runs them as a background
+  thread with per-step progress in `.state/update.json` that the page
+  polls (`/api/update_status`): pull -> pip install -> restart the main
+  service and *wait until it reports the new commit* -> restart the
+  dashboard. It restarts the main service if either new commits arrived
+  or `main_is_stale()` (running older code than on disk, e.g. already
+  pulled by hand), so "Already up to date" can't leave old code running.
+  Restarting `groove-tracker-web.service` kills the job's own thread, so
+  it goes through `service_control.restart_self_delayed()` and the *new*
+  process finishes the job (`_reconcile`: a process started after
+  `web_restart_requested_at` means it worked; a timeout means it didn't).
+  Step timings are recorded in `.state/update_timing.json` to give the
+  page a time-to-go estimate. "Restart" always means the systemd
+  services, never the Pi.
+- Staleness: `main.py` writes `status.json` (including the `code_version`
+  commit it started with) as the very first thing it does, and
+  `main_is_stale()` ignores any status report older than the service's
+  current start (`service_control.get_start_time()`), because a Pi Zero
+  takes a minute+ to finish its first poll after a restart and the file
+  would otherwise describe the previous process.
 - `webui/env_editor.py` edits `.env` in place (preserves comments/order,
   same idempotent-rewrite approach as `install.sh`'s `set_env_var`).
   Secret fields (`AUDD_API_TOKEN`, `MONGO_URI`, `HA_TOKEN`,
@@ -341,6 +356,23 @@ wrapper); it degrades to a reported "unavailable" status rather than
 raising when `systemctl`/`journalctl`/`sudo` aren't on PATH at all (e.g.
 this sandbox, or a non-Linux dev machine), so it's safe to import and call
 here even though the commands themselves won't do anything.
+
+## Versioning
+
+The project version lives in `VERSION` (semantic versioning, shown at the
+bottom of the dashboard as `vX.Y.Z`). **Every commit bumps it, and the
+`VERSION` change goes in that same commit.** Run, before committing:
+
+```bash
+scripts/bump_version.sh patch   # 1.0.0 -> 1.0.1  small fixes/tweaks/docs (default)
+scripts/bump_version.sh minor   # 1.0.1 -> 1.1.0  moderate: a new feature or notable change
+scripts/bump_version.sh major   # 1.1.0 -> 2.0.0  big or breaking changes
+```
+
+Pick the level by the size of the change; when unsure between patch and
+minor, ask whether a user would notice it as something new (minor) or just
+as something fixed/adjusted (patch). This is the repo owner's explicit
+standing instruction.
 
 ## Known open items
 

@@ -154,6 +154,17 @@ button:hover { filter: brightness(1.08); }
 
 .version-footer { text-align: center; margin-top: 8px; }
 
+.update-steps { list-style: none; margin: 12px 0 8px; padding: 0; }
+.update-steps li { padding: 4px 0; }
+.update-steps .step-pending, .update-steps .step-skipped { color: var(--muted); }
+.update-steps .step-running { font-weight: 600; }
+.update-steps .step-done { color: var(--ok); }
+.update-steps .step-failed { color: var(--danger); }
+.step-detail { white-space: pre-wrap; word-break: break-word; font-weight: 400; }
+.update-ok { color: var(--ok); font-weight: 600; }
+.update-failed { color: var(--danger); font-weight: 600; white-space: pre-wrap; }
+button:disabled { opacity: 0.5; cursor: default; }
+
 .history-list {
   list-style: none;
   margin: 0;

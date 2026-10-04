@@ -199,6 +199,16 @@ def _maybe_clear_for_unrecognized(state):
 
 
 def main_loop(once=False):
+    print(f"Groove Tracker v{status.current_version()} (commit {status.RUNNING_COMMIT}) starting.", flush=True)
+    # Report in right away -- before the slow DVinyl connection, idle-screen
+    # render, and first recording -- so the dashboard can tell this process
+    # is up and which code it's running, instead of showing the previous
+    # process's status for the first minute or so after a restart.
+    try:
+        status.write_status(playing=None, song=None, owned=None)
+    except Exception as e:
+        print(f"Could not write startup status: {e}", flush=True)
+
     refresh_cache()
     last_maintenance = time.time()
     state = _initial_state()
