@@ -146,18 +146,10 @@ def create_app():
     @app.post("/config")
     @login_required
     def config_save():
-        updates = {}
-        for _, fields in env_editor.FIELDS:
-            for key, field_type, _label, secret, _help in fields:
-                if field_type == "bool":
-                    updates[key] = "true" if request.form.get(key) else "false"
-                    continue
-                value = request.form.get(key, "")
-                if secret and not value:
-                    continue  # blank secret field = keep the existing value
-                updates[key] = value
+        current_text = env_editor.read_env_file()
+        updates = env_editor.updates_from_form(request.form, env_editor.parse_env_text(current_text))
 
-        text = env_editor.apply_updates(env_editor.read_env_file(), updates)
+        text = env_editor.apply_updates(current_text, updates)
         env_editor.write_env_file(text)
 
         restart_after = bool(request.form.get("restart_after_save"))

@@ -9,6 +9,8 @@ pattern as the rest of this project's hardware-touching modules.
 import os
 import secrets
 
+from .. import config
+
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 
@@ -141,6 +143,46 @@ def current_values():
     return parse_env_text(read_env_file())
 
 
+def form_value(key, env_values):
+    """What the config form should show for a setting: the value in .env,
+    or -- if .env doesn't set it at all -- the default the app is actually
+    using. Showing "" for a missing key would be wrong (the app isn't
+    running with a blank), and saving that blank back would then override
+    the default with an empty string, e.g. a blank HA_PLAYING_ENTITY_ID
+    that made every Home Assistant report go to /api/states/.
+    """
+    if key in env_values:
+        return env_values[key]
+    default = getattr(config, key, "")
+    if default is None:
+        return ""
+    if isinstance(default, bool):
+        return "true" if default else "false"
+    return str(default)
+
+
+def updates_from_form(form, existing_env):
+    """Turns a submitted config form into {KEY: value} updates for
+    apply_updates(). `form` needs a .get(); `existing_env` is the parsed
+    current .env.
+
+    - A blank secret field means "keep the current value" (skipped).
+    - A blank field for a key that isn't in .env at all is skipped too, so
+      saving can't create empty overrides of defaults the user never set.
+    """
+    updates = {}
+    for _, fields in FIELDS:
+        for key, field_type, _label, secret, _help in fields:
+            if field_type == "bool":
+                updates[key] = "true" if form.get(key) else "false"
+                continue
+            value = form.get(key, "")
+            if value == "" and (secret or key not in existing_env):
+                continue
+            updates[key] = value
+    return updates
+
+
 def build_form_groups():
     """Returns FIELDS with each field's current value attached, for
     rendering the config form -- secret fields get value="" always (never
@@ -152,7 +194,7 @@ def build_form_groups():
     for group_name, fields in FIELDS:
         rendered = []
         for key, field_type, label, secret, help_text in fields:
-            value = "" if secret else values.get(key, "")
+            value = "" if secret else form_value(key, values)
             rendered.append({
                 "key": key,
                 "type": field_type,

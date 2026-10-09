@@ -139,7 +139,9 @@ UNRECOGNIZED_CLEAR_SECONDS = int(os.getenv("UNRECOGNIZED_CLEAR_SECONDS", "60"))
 # your Profile page (scroll to "Long-lived access tokens" -> Create Token).
 HA_URL = os.getenv("HA_URL", "")
 HA_TOKEN = os.getenv("HA_TOKEN", "")
-HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID", "binary_sensor.groove_tracker_playing")
+# `or` rather than a getenv default: a blank "HA_PLAYING_ENTITY_ID=" line in
+# .env must fall back to the default, not become an empty entity ID.
+HA_PLAYING_ENTITY_ID = os.getenv("HA_PLAYING_ENTITY_ID") or "binary_sensor.groove_tracker_playing"
 # --- Web UI ---
 # Optional local dashboard (see groove_tracker/webui/) for controlling the
 # service, viewing logs/status, and editing .env from a browser instead of

@@ -42,3 +42,35 @@ def test_apply_updates_leaves_untouched_keys_alone():
     # for secret fields actually work.
     assert "AUDD_API_TOKEN=secret" in result
     assert "MOCK_MODE=true" in result
+
+
+def test_form_shows_the_real_default_for_a_setting_missing_from_env():
+    from groove_tracker import config
+    from groove_tracker.webui.env_editor import form_value
+
+    assert form_value("HA_PLAYING_ENTITY_ID", {}) == config.HA_PLAYING_ENTITY_ID
+    assert form_value("HA_PLAYING_ENTITY_ID", {}) != ""
+    # An explicit value in .env always wins.
+    assert form_value("HA_PLAYING_ENTITY_ID", {"HA_PLAYING_ENTITY_ID": "binary_sensor.custom"}) == "binary_sensor.custom"
+    # None defaults (e.g. AUDIO_DEVICE = system default) show as blank.
+    assert form_value("AUDIO_DEVICE", {}) == ""
+
+
+def test_saving_the_form_never_creates_blank_overrides_for_unset_keys():
+    from groove_tracker.webui.env_editor import updates_from_form
+
+    form = {"HA_PLAYING_ENTITY_ID": "", "SAMPLE_RATE": "48000", "AUDD_API_TOKEN": ""}
+    updates = updates_from_form(form, existing_env={"SAMPLE_RATE": "44100", "AUDD_API_TOKEN": "secret"})
+
+    assert "HA_PLAYING_ENTITY_ID" not in updates  # not in .env, blank -> left alone
+    assert "AUDD_API_TOKEN" not in updates  # blank secret -> keep current
+    assert updates["SAMPLE_RATE"] == "48000"
+
+
+def test_a_key_already_in_env_can_still_be_deliberately_blanked():
+    from groove_tracker.webui.env_editor import updates_from_form
+
+    # e.g. HA_URL blank = disable Home Assistant; that must stay possible.
+    updates = updates_from_form({"HA_URL": ""}, existing_env={"HA_URL": "http://10.0.0.2:8123"})
+
+    assert updates["HA_URL"] == ""
