@@ -12,7 +12,7 @@ report after each Home Assistant restart, which is expected.
 """
 import requests
 
-from . import config
+from . import config, status
 
 
 def set_playing_state(is_playing):
@@ -23,10 +23,12 @@ def set_playing_state(is_playing):
     """
     if config.MOCK_MODE:
         print(f"[mock home assistant] {config.HA_PLAYING_ENTITY_ID} -> {'on' if is_playing else 'off'}")
+        status.write_ha_status("mock")
         return
 
     if not config.HA_URL or not config.HA_TOKEN:
         # Not configured — treat as an optional feature rather than an error.
+        status.write_ha_status("disabled")
         return
 
     url = f"{config.HA_URL.rstrip('/')}/api/states/{config.HA_PLAYING_ENTITY_ID}"
@@ -41,5 +43,12 @@ def set_playing_state(is_playing):
             "device_class": "sound",
         },
     }
-    response = requests.post(url, json=payload, headers=headers, timeout=10)
-    response.raise_for_status()
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+    except Exception as e:
+        # Recorded for the dashboard, then re-raised so main.py still logs
+        # it exactly as before.
+        status.write_ha_status("error", str(e))
+        raise
+    status.write_ha_status("connected")

@@ -164,4 +164,8 @@ DISPLAY_PREVIEW_PATH = os.path.join(STATE_DIR, "now_playing.png")
 # Rolling log of recently recognized songs (newest first), for the web
 # UI's "Recently identified" list -- see status.py's append_history().
 HISTORY_PATH = os.path.join(STATE_DIR, "history.json")
+
+# Outcome of the most recent Home Assistant report, for the dashboard's
+# "Home Assistant" card -- see status.write_ha_status().
+HA_STATUS_PATH = os.path.join(STATE_DIR, "ha_status.json")
 HISTORY_MAX_ENTRIES = int(os.getenv("HISTORY_MAX_ENTRIES", "5"))

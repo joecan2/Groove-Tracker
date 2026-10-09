@@ -115,3 +115,37 @@ def test_code_is_stale_compares_running_commit_to_disk():
     assert status.code_is_stale(None, "abc1234") is True
     # Can't tell what's on disk (no git) -- don't claim it's stale.
     assert status.code_is_stale("abc1234", None) is False
+
+
+def _clear_ha_status():
+    if os.path.exists(config.HA_STATUS_PATH):
+        os.remove(config.HA_STATUS_PATH)
+
+
+def test_read_ha_status_is_empty_before_any_report():
+    _clear_ha_status()
+
+    assert status.read_ha_status() == {}
+
+
+def test_ha_status_records_connected_then_remembers_last_ok_through_an_error():
+    _clear_ha_status()
+
+    status.write_ha_status("connected")
+    ok_at = status.read_ha_status()["last_ok_at"]
+    status.write_ha_status("error", "404 Client Error")
+    result = status.read_ha_status()
+
+    assert result["state"] == "error"
+    assert result["last_error"] == "404 Client Error"
+    # The earlier success is still on record, so the dashboard can say
+    # when it last worked.
+    assert result["last_ok_at"] == ok_at
+
+
+def test_ha_status_records_which_entity_is_being_used():
+    _clear_ha_status()
+
+    status.write_ha_status("disabled")
+
+    assert status.read_ha_status()["entity_id"] == config.HA_PLAYING_ENTITY_ID

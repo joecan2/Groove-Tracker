@@ -50,6 +50,15 @@
   </div>
 
   <div class="card">
+    <h2>Home Assistant</h2>
+    <p><span id="ha-badge" class="badge inactive">checking</span></p>
+    <p id="ha-headline" class="small"></p>
+    <p id="ha-entity" class="muted small"></p>
+    <p id="ha-last-ok" class="muted small"></p>
+    <p id="ha-error" class="error small"></p>
+  </div>
+
+  <div class="card">
     <h2>Recently identified</h2>
     <ul id="history-list" class="history-list">
       {% for entry in history %}
@@ -137,6 +146,52 @@ function renderHistory(history) {
   });
 }
 
+const HA_STALE_AFTER = 300;  // seconds without a report before we say so
+
+function agoText(seconds) {
+  const secs = Math.max(0, Math.round(seconds));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86400)}d ago`;
+}
+
+function renderHomeAssistant(ha) {
+  const badge = document.getElementById("ha-badge");
+  const headline = document.getElementById("ha-headline");
+  const entity = document.getElementById("ha-entity");
+  const lastOk = document.getElementById("ha-last-ok");
+  const error = document.getElementById("ha-error");
+
+  let label, cls, text;
+  const age = ha.checked_at ? ha.now - ha.checked_at : null;
+  if (!ha.state) {
+    [label, cls, text] = ["No reports yet", "inactive",
+      "The identifier service hasn't reported to Home Assistant yet."];
+  } else if (age > HA_STALE_AFTER && ha.state !== "disabled") {
+    [label, cls, text] = ["No recent report", "inactive",
+      `Last report was ${agoText(age)}. Is the identifier service running?`];
+  } else if (ha.state === "connected") {
+    [label, cls, text] = ["Connected", "active", "Reporting to Home Assistant normally."];
+  } else if (ha.state === "error") {
+    [label, cls, text] = ["Error", "failed", "The last report to Home Assistant failed."];
+  } else if (ha.state === "disabled") {
+    [label, cls, text] = ["Not configured", "inactive",
+      "HA_URL or HA_TOKEN is blank, so nothing is sent. Set both on the Config page to enable it."];
+  } else if (ha.state === "mock") {
+    [label, cls, text] = ["Mock mode", "inactive", "MOCK_MODE is on, so nothing is really sent."];
+  }
+
+  badge.textContent = label;
+  badge.className = "badge " + cls;
+  headline.textContent = text;
+  entity.textContent = ha.entity_id ? `Entity: ${ha.entity_id}` + (ha.url ? ` @ ${ha.url}` : "") : "";
+  lastOk.textContent = ha.last_ok_at ? `Last successful report: ${agoText(ha.now - ha.last_ok_at)}` : "";
+  error.textContent = ha.last_error
+    ? `Last error (${agoText(ha.now - ha.last_error_at)}): ${ha.last_error}`
+    : "";
+}
+
 async function refresh() {
   try {
     const res = await fetch("{{ url_for('api_status') }}");
@@ -159,6 +214,7 @@ async function refresh() {
     card.querySelector('[data-role="error-msg"]').textContent = data.error || "";
     document.getElementById("updated-ago").textContent = timeAgo(data.updated_at);
     renderHistory(data.history);
+    renderHomeAssistant(data.home_assistant);
 
     const img = document.getElementById("preview-img");
     if (img) img.src = "{{ url_for('preview') }}?t=" + Date.now();
@@ -173,6 +229,8 @@ async function refresh() {
 document.querySelectorAll("#history-list .history-ago").forEach(el => {
   el.textContent = shortTimeAgo(parseFloat(el.dataset.recognizedAt));
 });
+
+renderHomeAssistant({{ ha|tojson }});
 
 setInterval(refresh, 5000);
 

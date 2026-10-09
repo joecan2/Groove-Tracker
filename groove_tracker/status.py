@@ -154,6 +154,42 @@ def append_history(song, owned):
     os.replace(tmp_path, config.HISTORY_PATH)
 
 
+def write_ha_status(state, error=None):
+    """Records the outcome of the latest Home Assistant report, for the
+    dashboard. `state` is one of: "connected", "error", "disabled" (HA_URL/
+    HA_TOKEN not set) or "mock". last_ok_at and last_error survive across
+    calls so the dashboard can show e.g. "last worked 3m ago" while it's
+    currently failing.
+    """
+    previous = read_ha_status()
+    now = time.time()
+    record = {
+        "state": state,
+        "checked_at": now,
+        "last_ok_at": now if state == "connected" else previous.get("last_ok_at"),
+        "last_error": error if state == "error" else previous.get("last_error"),
+        "last_error_at": now if state == "error" else previous.get("last_error_at"),
+        "entity_id": config.HA_PLAYING_ENTITY_ID,
+        "url": config.HA_URL,
+    }
+    os.makedirs(config.STATE_DIR, exist_ok=True)
+    tmp_path = config.HA_STATUS_PATH + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(record, f)
+    os.replace(tmp_path, config.HA_STATUS_PATH)
+
+
+def read_ha_status():
+    """The last Home Assistant report outcome, or {} if there hasn't been
+    one yet (or the file is unreadable)."""
+    try:
+        with open(config.HA_STATUS_PATH) as f:
+            record = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
 def read_history():
     """Returns the rolling history list (newest first), or [] if it
     doesn't exist yet or is unreadable (see read_status's docstring for

@@ -14,6 +14,7 @@ usable even if the main service is stopped or crashed.
 import functools
 import os
 import secrets
+import time
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 
@@ -61,6 +62,11 @@ def create_app():
         session.clear()
         return redirect(url_for("login"))
 
+    def _ha_payload():
+        # "now" is the server's clock, so the page can work out how old a
+        # report is without trusting the viewer's own (possibly skewed) clock.
+        return {**status.read_ha_status(), "now": time.time()}
+
     @app.get("/")
     @login_required
     def dashboard():
@@ -74,6 +80,7 @@ def create_app():
             disk_commit=status.current_commit(),
             version=status.current_version() or "unknown",
             history=status.read_history(),
+            ha=_ha_payload(),
             service_status=service_state,
             password_configured=_password_configured(),
             preview_exists=os.path.exists(config.DISPLAY_PREVIEW_PATH),
@@ -88,6 +95,7 @@ def create_app():
             **status.read_status(),
             "service_status": service_control.get_status(),
             "history": status.read_history(),
+            "home_assistant": _ha_payload(),
         })
 
     @app.get("/preview.png")
